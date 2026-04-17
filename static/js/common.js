@@ -1,5 +1,6 @@
 const NAROU_API_BASE = "https://api.syosetu.com/novelapi/api/";
 const NCODE_PROXY_BASE = "https://cors.eu.org/";
+const READING_PROGRESS_KEY = "readingProgress";
 
 const GENRE_MAP = {
   "101": "异世界·恋爱", "102": "现实世界·恋爱",
@@ -139,6 +140,61 @@ function extractChapterNumber(href, fallbackValue) {
   const lastPart = parts[parts.length - 1];
   const parsed = Number.parseInt(lastPart, 10);
   return Number.isInteger(parsed) ? parsed : fallbackValue;
+}
+
+function normalizeNcode(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function loadReadingProgressMap() {
+  try {
+    const raw = localStorage.getItem(READING_PROGRESS_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (error) {
+    return {};
+  }
+}
+
+function getReadingProgress(ncode) {
+  const key = normalizeNcode(ncode);
+  if (!key) {
+    return null;
+  }
+  const map = loadReadingProgressMap();
+  const progress = map[key];
+  if (!progress || typeof progress !== "object") {
+    return null;
+  }
+  return progress;
+}
+
+function setReadingProgress(ncode, progress) {
+  const key = normalizeNcode(ncode);
+  if (!key || !progress || typeof progress !== "object") {
+    return;
+  }
+  const map = loadReadingProgressMap();
+  map[key] = {
+    ...map[key],
+    ...progress,
+    chapter: parsePositiveInt(progress.chapter, parsePositiveInt(map[key]?.chapter, 1)),
+    scrollRatio: Number.isFinite(Number(progress.scrollRatio))
+      ? Math.min(1, Math.max(0, Number(progress.scrollRatio)))
+      : Number(map[key]?.scrollRatio) || 0,
+    updatedAt: new Date().toISOString(),
+  };
+  localStorage.setItem(READING_PROGRESS_KEY, JSON.stringify(map));
+}
+
+function getResumeChapter(ncode, chapters, defaultChapter = 1) {
+  const progress = getReadingProgress(ncode);
+  const savedChapter = parsePositiveInt(progress?.chapter, defaultChapter);
+  if (!Array.isArray(chapters) || chapters.length === 0) {
+    return savedChapter;
+  }
+  const chapterSet = new Set(chapters.map((item) => parsePositiveInt(item?.num, NaN)).filter(Number.isInteger));
+  return chapterSet.has(savedChapter) ? savedChapter : parsePositiveInt(chapters[0]?.num, defaultChapter);
 }
 
 function parseContentBlock(container) {

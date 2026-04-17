@@ -101,6 +101,9 @@ let currentChapter = parseInt('{{ chapter }}', 10);
 let prevChapter = null;
 let nextChapter = null;
 const DEFAULT_FONT_SIZE = 21;
+const READING_PROGRESS_KEY = 'readingProgress';
+let chapterChangedByNavigation = false;
+let progressSaveTimer = null;
 
 // Reading preferences
 let prefs = JSON.parse(localStorage.getItem('readerPrefs') || '{}');
@@ -151,7 +154,13 @@ async function loadContent() {
 
     loading.style.display = 'none';
     article.style.display = 'block';
-    window.scrollTo(0, 0);
+    const restored = restoreReadingPosition();
+    if (chapterChangedByNavigation || !restored) {
+      saveReadingProgressNow();
+    } else {
+      scheduleSaveProgress();
+    }
+    chapterChangedByNavigation = false;
   } catch(e) {
     loading.style.display = 'none';
     errDiv.style.display = 'flex';
@@ -173,7 +182,9 @@ function updateNavBtns() {
 function goChapter(dir) {
   const target = dir === 'prev' ? prevChapter : nextChapter;
   if (target !== null) {
+    saveReadingProgressNow();
     currentChapter = target;
+    chapterChangedByNavigation = true;
     history.pushState({}, '', `/read/${NCODE}/${currentChapter}`);
     loadContent();
   }
@@ -235,6 +246,7 @@ window.addEventListener('scroll', () => {
   const doc = document.documentElement;
   const pct = doc.scrollTop / (doc.scrollHeight - doc.clientHeight) * 100;
   document.getElementById('progressBar').style.width = Math.min(100, pct) + '%';
+  scheduleSaveProgress();
 });
 
 // Keyboard navigation
@@ -249,9 +261,76 @@ window.addEventListener('popstate', () => {
   const chapter = Number.parseInt(window.location.pathname.split('/').pop(), 10);
   if (Number.isInteger(chapter)) {
     currentChapter = chapter;
+    chapterChangedByNavigation = false;
     loadContent();
   }
 });
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') {
+    saveReadingProgressNow();
+  }
+});
+
+window.addEventListener('beforeunload', saveReadingProgressNow);
+
+function getScrollRatio() {
+  const doc = document.documentElement;
+  const denominator = doc.scrollHeight - doc.clientHeight;
+  if (denominator <= 0) return 0;
+  return Math.min(1, Math.max(0, doc.scrollTop / denominator));
+}
+
+function saveReadingProgressNow() {
+  const map = loadReadingProgressMap();
+  map[String(NCODE).toLowerCase()] = {
+    ...map[String(NCODE).toLowerCase()],
+    chapter: Number.isInteger(currentChapter) && currentChapter > 0 ? currentChapter : 1,
+    scrollRatio: getScrollRatio(),
+    updatedAt: new Date().toISOString(),
+  };
+  localStorage.setItem(READING_PROGRESS_KEY, JSON.stringify(map));
+}
+
+function loadReadingProgressMap() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(READING_PROGRESS_KEY) || '{}');
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function getReadingProgress() {
+  const map = loadReadingProgressMap();
+  const progress = map[String(NCODE).toLowerCase()];
+  return progress && typeof progress === 'object' ? progress : null;
+}
+
+function restoreReadingPosition() {
+  const progress = getReadingProgress();
+  const savedChapter = Number.parseInt(progress?.chapter, 10);
+  const savedRatio = Number(progress?.scrollRatio);
+  if (chapterChangedByNavigation || savedChapter !== currentChapter || !Number.isFinite(savedRatio) || savedRatio <= 0) {
+    window.scrollTo(0, 0);
+    return false;
+  }
+  window.requestAnimationFrame(() => {
+    const doc = document.documentElement;
+    const denominator = doc.scrollHeight - doc.clientHeight;
+    const targetTop = denominator > 0 ? Math.round(Math.min(1, Math.max(0, savedRatio)) * denominator) : 0;
+    window.scrollTo(0, targetTop);
+  });
+  return true;
+}
+
+function scheduleSaveProgress() {
+  if (progressSaveTimer !== null) return;
+  progressSaveTimer = window.setTimeout(() => {
+    progressSaveTimer = null;
+    saveReadingProgressNow();
+  }, 300);
+}
 
 applyPrefs();
 loadContent();
