@@ -112,8 +112,12 @@ async function loadContent() {
 
   readerLoading.style.display = "none";
   readerArticle.style.display = "block";
-  restoreReadingPosition();
-  saveReadingProgressNow();
+  const restored = restoreReadingPosition();
+  if (chapterChangedByNavigation || !restored) {
+    saveReadingProgressNow();
+  } else {
+    scheduleSaveProgress();
+  }
   chapterChangedByNavigation = false;
 }
 
@@ -266,7 +270,7 @@ function restoreReadingPosition() {
   const savedRatio = Number(progress?.scrollRatio);
   if (chapterChangedByNavigation || savedChapter !== currentChapter || !Number.isFinite(savedRatio) || savedRatio <= 0) {
     window.scrollTo(0, 0);
-    return;
+    return false;
   }
 
   window.requestAnimationFrame(() => {
@@ -275,6 +279,7 @@ function restoreReadingPosition() {
     const targetTop = denominator > 0 ? Math.round(Math.min(1, Math.max(0, savedRatio)) * denominator) : 0;
     window.scrollTo(0, targetTop);
   });
+  return true;
 }
 
 function saveReadingProgressNow() {
