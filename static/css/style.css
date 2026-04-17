@@ -16,7 +16,10 @@
   --max-content-width: 1120px;
   --mobile-total-inline-space: 14px;
   --reader-mobile-edge-offset: 8px;
-  --reader-mobile-settings-top: 86px;
+  --reader-mobile-toolbar-height: 78px;
+  --reader-mobile-settings-top: calc(
+    var(--reader-mobile-edge-offset) + var(--reader-mobile-toolbar-height)
+  );
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -833,7 +836,7 @@ main {
   }
 
   .reader-toolbar {
-    top: calc(var(--reader-mobile-edge-offset) + var(--safe-top));
+    top: var(--safe-top);
     margin-top: var(--reader-mobile-edge-offset);
     padding: 12px;
     border-radius: 14px;
