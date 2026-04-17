@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>阅读中 · 日文小说</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=Noto+Serif+SC:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="static/css/style.css">
+  <style>
+    body { background: var(--reader-bg); }
+    .navbar { position: sticky; top: 0; z-index: 100; }
+  </style>
+</head>
+<body class="light">
+  <nav class="navbar">
+    <div class="nav-inner">
+      <a href="index.html" class="logo">
+        <span class="logo-red">日文</span><span class="logo-gray">小说</span>
+      </a>
+      <div class="nav-links">
+        <a href="index.html" class="nav-link">首页</a>
+        <a href="index.html?order=hyoka" class="nav-link">排行榜</a>
+        <a href="index.html?order=favnovelcnt" class="nav-link">热门收藏</a>
+        <a href="index.html?order=new" class="nav-link">最新更新</a>
+      </div>
+      <button class="theme-btn" id="themeBtn" title="切换主题">🌙</button>
+    </div>
+  </nav>
+
+  <main>
+    <div class="reader-toolbar">
+      <div class="toolbar-left">
+        <a href="index.html" class="toolbar-btn" id="catalogLink" title="返回目录">← 目录</a>
+      </div>
+      <div class="toolbar-center">
+        <span class="toolbar-novel-title" id="toolbarNovelTitle">加载中…</span>
+        <span class="toolbar-sep">›</span>
+        <span class="toolbar-ch-title" id="toolbarChTitle"></span>
+      </div>
+      <div class="toolbar-right">
+        <button class="toolbar-btn" id="settingsBtn" title="阅读设置">⚙️ 设置</button>
+        <button class="toolbar-btn" id="prevBtn" disabled>‹ 上一话</button>
+        <button class="toolbar-btn" id="nextBtn" disabled>下一话 ›</button>
+      </div>
+    </div>
+
+    <div class="settings-panel" id="settingsPanel" style="display:none">
+      <div class="settings-inner">
+        <div class="setting-row">
+          <span>字体大小</span>
+          <div class="btn-group">
+            <button data-font-size="16">小</button>
+            <button data-font-size="18" class="active">中</button>
+            <button data-font-size="21">大</button>
+            <button data-font-size="24">特大</button>
+          </div>
+        </div>
+        <div class="setting-row">
+          <span>背景颜色</span>
+          <div class="btn-group">
+            <button class="bg-btn" data-bg="light">白色</button>
+            <button class="bg-btn" data-bg="sepia">米黄</button>
+            <button class="bg-btn" data-bg="dark">夜间</button>
+          </div>
+        </div>
+        <div class="setting-row">
+          <span>字体</span>
+          <div class="btn-group">
+            <button data-font="sans">黑体</button>
+            <button data-font="serif" class="active">宋体</button>
+          </div>
+        </div>
+        <div class="setting-row">
+          <span>行间距</span>
+          <div class="btn-group">
+            <button data-line-height="1.6">紧凑</button>
+            <button data-line-height="2" class="active">适中</button>
+            <button data-line-height="2.6">宽松</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="read-progress-bar" id="progressBar"></div>
+
+    <div class="reader-wrap" id="readerWrap">
+      <div class="reader-loading" id="readerLoading">
+        <div class="spinner"></div>
+        <p>正在加载章节内容…</p>
+      </div>
+      <article class="reader-article" id="readerArticle" style="display:none">
+        <h1 class="reader-ch-title" id="readerChTitle"></h1>
+        <div class="reader-foreword" id="readerForeword"></div>
+        <div class="reader-content" id="readerContent"></div>
+        <div class="reader-afterword" id="readerAfterword"></div>
+      </article>
+      <div class="reader-error" id="readerError" style="display:none">
+        <p>⚠️ 内容加载失败，请稍后重试</p>
+        <button class="btn-primary" id="reloadBtn">重新加载</button>
+      </div>
+    </div>
+
+    <div class="reader-nav-bottom">
+      <button class="nav-big-btn" id="prevBtnBottom" disabled>← 上一话</button>
+      <a href="index.html" class="nav-big-btn nav-center" id="catalogLinkBottom">📚 目录</a>
+      <button class="nav-big-btn" id="nextBtnBottom" disabled>下一话 →</button>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <p>内容来源：<a href="https://syosetu.com" target="_blank" rel="noopener">小説家になろう</a>（合法公开平台）</p>
+      <p>本站仅供日语学习与交流，版权归原作者所有</p>
+    </div>
+  </footer>
+
+  <script src="static/js/app.js"></script>
+  <script src="static/js/common.js"></script>
+  <script src="static/js/reader-page.js"></script>
+</body>
+</html>

@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+{% block title %}日文小说 · 首页{% endblock %}
+
+{% block content %}
+<!-- Hero Search -->
+<section class="hero">
+  <div class="hero-inner">
+    <h1 class="hero-title">📖 日文小说阅读</h1>
+    <p class="hero-sub">来自「小説家になろう」的海量日文小说，免费阅读</p>
+    <div class="search-wrap">
+      <input type="text" id="searchInput" class="search-input"
+             placeholder="搜索小说标题、作者、关键词…" autocomplete="off">
+      <button class="search-btn" onclick="doSearch()">搜索</button>
+    </div>
+  </div>
+</section>
+
+<!-- Filters -->
+<div class="filters-bar">
+  <div class="filters-inner">
+    <!-- Genre -->
+    <div class="filter-group">
+      <span class="filter-label">分类：</span>
+      <div class="genre-chips" id="genreChips">
+        <button class="chip active" data-genre="">全部</button>
+        <button class="chip" data-genre="201">⚔️ 高幻想</button>
+        <button class="chip" data-genre="101">💕 异世界恋爱</button>
+        <button class="chip" data-genre="401">🎮 VR游戏</button>
+        <button class="chip" data-genre="306">💥 动作</button>
+        <button class="chip" data-genre="304">🔍 推理</button>
+        <button class="chip" data-genre="305">👻 恐怖</button>
+        <button class="chip" data-genre="307">😂 喜剧</button>
+        <button class="chip" data-genre="303">🏯 历史</button>
+        <button class="chip" data-genre="402">🚀 科幻</button>
+        <button class="chip" data-genre="302">🎭 人情剧</button>
+      </div>
+    </div>
+    <!-- Sort -->
+    <div class="filter-group">
+      <span class="filter-label">排序：</span>
+      <select class="sort-select" id="sortSelect" onchange="doSearch()">
+        <option value="hyoka">综合评分</option>
+        <option value="favnovelcnt">收藏数</option>
+        <option value="new">最新更新</option>
+        <option value="weekly">本周热门</option>
+        <option value="lengthdesc">字数最多</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<!-- Results Info -->
+<div class="results-bar" id="resultsBar" style="display:none">
+  <span id="resultsInfo"></span>
+</div>
+
+<!-- Novel Grid -->
+<div class="container">
+  <div class="novel-grid" id="novelGrid">
+    <!-- filled by JS -->
+  </div>
+  <div class="loading" id="loading">
+    <div class="spinner"></div>
+    <p>正在加载…</p>
+  </div>
+  <div class="empty" id="emptyState" style="display:none">
+    <p>😔 暂无结果，换个关键词试试吧</p>
+  </div>
+  <!-- Pagination -->
+  <div class="pagination" id="pagination"></div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const urlParams = new URLSearchParams(window.location.search);
+let currentPage = parseInt(urlParams.get('page') || '1');
+let currentQuery = urlParams.get('q') || '';
+let currentGenre = urlParams.get('genre') || '';
+let currentOrder = urlParams.get('order') || 'hyoka';
+
+// Init
+document.getElementById('searchInput').value = currentQuery;
+document.getElementById('sortSelect').value = currentOrder;
+highlightGenre(currentGenre);
+
+function highlightGenre(g) {
+  document.querySelectorAll('.chip').forEach(c => {
+    c.classList.toggle('active', c.dataset.genre === g);
+  });
+}
+
+document.querySelectorAll('.chip').forEach(c => {
+  c.addEventListener('click', () => {
+    currentGenre = c.dataset.genre;
+    currentPage = 1;
+    highlightGenre(currentGenre);
+    doSearch();
+  });
+});
+
+document.getElementById('searchInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doSearch();
+});
+
+function doSearch(page) {
+  currentPage = page || 1;
+  currentQuery = document.getElementById('searchInput').value.trim();
+  currentOrder = document.getElementById('sortSelect').value;
+  loadNovels();
+  // Update URL
+  const params = new URLSearchParams();
+  if (currentQuery) params.set('q', currentQuery);
+  if (currentGenre) params.set('genre', currentGenre);
+  if (currentOrder !== 'hyoka') params.set('order', currentOrder);
+  if (currentPage > 1) params.set('page', currentPage);
+  history.replaceState({}, '', '?' + params.toString());
+}
+
+async function loadNovels() {
+  const grid = document.getElementById('novelGrid');
+  const loading = document.getElementById('loading');
+  const empty = document.getElementById('emptyState');
+  const bar = document.getElementById('resultsBar');
+
+  grid.innerHTML = '';
+  loading.style.display = 'flex';
+  empty.style.display = 'none';
+  bar.style.display = 'none';
+
+  const params = new URLSearchParams({
+    q: currentQuery,
+    genre: currentGenre,
+    order: currentOrder,
+    page: currentPage,
+  });
+
+  try {
+    const res = await fetch('/api/search?' + params);
+    const data = await res.json();
+    loading.style.display = 'none';
+
+    if (!data.novels || data.novels.length === 0) {
+      empty.style.display = 'block';
+      return;
+    }
+
+    bar.style.display = 'block';
+    document.getElementById('resultsInfo').textContent =
+      `共 ${data.total.toLocaleString()} 部，当前第 ${currentPage} 页`;
+
+    data.novels.forEach(n => {
+      grid.appendChild(buildCard(n));
+    });
+
+    buildPagination(data.total, currentPage);
+  } catch (e) {
+    loading.style.display = 'none';
+    empty.style.display = 'block';
+  }
+}
+
+function buildCard(n) {
+  const card = document.createElement('div');
+  card.className = 'novel-card';
+  const story = (n.story || '').replace(/\r?\n/g, ' ').slice(0, 100);
+  const fav = (n.fav_novel_cnt || 0).toLocaleString();
+  const ga = (n.general_all_no || 0).toLocaleString();
+  const status = n.is_completed
+    ? '<span class="badge badge-done">完结</span>'
+    : '<span class="badge badge-ongoing">连载中</span>';
+  const type = !n.is_series
+    ? '<span class="badge badge-short">短篇</span>'
+    : '';
+
+  card.innerHTML = `
+    <a href="/novel/${n.ncode}" class="card-link">
+      <div class="card-header">
+        <span class="card-genre">${n.genre_icon || '📖'} ${n.genre_name || ''}</span>
+        <div class="card-badges">${status}${type}</div>
+      </div>
+      <h3 class="card-title">${escHtml(n.title || '')}</h3>
+      <p class="card-author">作者：${escHtml(n.writer || '')}</p>
+      <p class="card-story">${escHtml(story)}${story.length >= 100 ? '…' : ''}</p>
+      <div class="card-meta">
+        <span title="收藏">⭐ ${fav}</span>
+        <span title="综合评分">🏆 ${ga}</span>
+        <span title="字数">📝 ${n.length_label || ''}</span>
+      </div>
+    </a>
+  `;
+  return card;
+}
+
+function buildPagination(total, page) {
+  const totalPages = Math.ceil(total / 20);
+  if (totalPages <= 1) return;
+  const pag = document.getElementById('pagination');
+  pag.innerHTML = '';
+
+  const addBtn = (label, p, disabled, active) => {
+    const btn = document.createElement('button');
+    btn.textContent = label;
+    btn.className = 'page-btn' + (active ? ' active' : '');
+    btn.disabled = disabled;
+    btn.onclick = () => doSearch(p);
+    pag.appendChild(btn);
+  };
+
+  addBtn('‹ 上一页', page - 1, page === 1, false);
+
+  let start = Math.max(1, page - 2);
+  let end = Math.min(totalPages, page + 2);
+  if (start > 1) { addBtn('1', 1, false, false); if (start > 2) pag.appendChild(Object.assign(document.createElement('span'), {textContent: '…', className: 'page-ellipsis'})); }
+  for (let i = start; i <= end; i++) addBtn(i, i, false, i === page);
+  if (end < totalPages) { if (end < totalPages - 1) pag.appendChild(Object.assign(document.createElement('span'), {textContent: '…', className: 'page-ellipsis'})); addBtn(totalPages, totalPages, false, false); }
+
+  addBtn('下一页 ›', page + 1, page === totalPages, false);
+}
+
+function escHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Initial load
+loadNovels();
+</script>
+{% endblock %}

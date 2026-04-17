@@ -1,0 +1,258 @@
+{% extends "base.html" %}
+{% block title %}阅读中 · 日文小说{% endblock %}
+
+{% block extra_head %}
+<style>
+/* Reader-specific overrides */
+body { background: var(--reader-bg); }
+.navbar { position: sticky; top: 0; z-index: 100; }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Reader Toolbar -->
+<div class="reader-toolbar">
+  <div class="toolbar-left">
+    <a href="/novel/{{ ncode }}" class="toolbar-btn" title="返回目录">← 目录</a>
+  </div>
+  <div class="toolbar-center">
+    <span class="toolbar-novel-title" id="toolbarNovelTitle">加载中…</span>
+    <span class="toolbar-sep">›</span>
+    <span class="toolbar-ch-title" id="toolbarChTitle"></span>
+  </div>
+  <div class="toolbar-right">
+    <button class="toolbar-btn" onclick="toggleSettings()" title="阅读设置">⚙️ 设置</button>
+    <button class="toolbar-btn" id="prevBtn" onclick="goChapter('prev')" disabled>‹ 上一话</button>
+    <button class="toolbar-btn" id="nextBtn" onclick="goChapter('next')" disabled>下一话 ›</button>
+  </div>
+</div>
+
+<!-- Settings Panel -->
+<div class="settings-panel" id="settingsPanel" style="display:none">
+  <div class="settings-inner">
+    <div class="setting-row">
+      <span>字体大小</span>
+      <div class="btn-group">
+        <button onclick="setFontSize(16)">小</button>
+        <button onclick="setFontSize(18)" class="active">中</button>
+        <button onclick="setFontSize(21)">大</button>
+        <button onclick="setFontSize(24)">特大</button>
+      </div>
+    </div>
+    <div class="setting-row">
+      <span>背景颜色</span>
+      <div class="btn-group">
+        <button class="bg-btn" data-bg="light" onclick="setReaderBg('light')">白色</button>
+        <button class="bg-btn" data-bg="sepia" onclick="setReaderBg('sepia')">米黄</button>
+        <button class="bg-btn" data-bg="dark" onclick="setReaderBg('dark')">夜间</button>
+      </div>
+    </div>
+    <div class="setting-row">
+      <span>字体</span>
+      <div class="btn-group">
+        <button onclick="setFont('sans')">黑体</button>
+        <button onclick="setFont('serif')" class="active">宋体</button>
+      </div>
+    </div>
+    <div class="setting-row">
+      <span>行间距</span>
+      <div class="btn-group">
+        <button onclick="setLineHeight(1.6)">紧凑</button>
+        <button onclick="setLineHeight(2.0)" class="active">适中</button>
+        <button onclick="setLineHeight(2.6)">宽松</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Progress Bar -->
+<div class="read-progress-bar" id="progressBar"></div>
+
+<!-- Reader Area -->
+<div class="reader-wrap" id="readerWrap">
+  <div class="reader-loading" id="readerLoading">
+    <div class="spinner"></div>
+    <p>正在加载章节内容…</p>
+  </div>
+  <article class="reader-article" id="readerArticle" style="display:none">
+    <h1 class="reader-ch-title" id="readerChTitle"></h1>
+    <div class="reader-foreword" id="readerForeword"></div>
+    <div class="reader-content" id="readerContent"></div>
+    <div class="reader-afterword" id="readerAfterword"></div>
+  </article>
+  <div class="reader-error" id="readerError" style="display:none">
+    <p>⚠️ 内容加载失败，请稍后重试</p>
+    <button onclick="loadContent()">重新加载</button>
+  </div>
+</div>
+
+<!-- Bottom Navigation -->
+<div class="reader-nav-bottom">
+  <button class="nav-big-btn" id="prevBtnBottom" onclick="goChapter('prev')" disabled>← 上一话</button>
+  <a href="/novel/{{ ncode }}" class="nav-big-btn nav-center">📚 目录</a>
+  <button class="nav-big-btn" id="nextBtnBottom" onclick="goChapter('next')" disabled>下一话 →</button>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const NCODE = '{{ ncode }}';
+let currentChapter = parseInt('{{ chapter }}', 10);
+let prevChapter = null;
+let nextChapter = null;
+
+// Reading preferences
+let prefs = JSON.parse(localStorage.getItem('readerPrefs') || '{}');
+
+async function loadContent() {
+  const article = document.getElementById('readerArticle');
+  const loading = document.getElementById('readerLoading');
+  const errDiv = document.getElementById('readerError');
+
+  article.style.display = 'none';
+  loading.style.display = 'flex';
+  errDiv.style.display = 'none';
+
+  try {
+    const res = await fetch(`/api/content/${NCODE}/${currentChapter}`);
+    const data = await res.json();
+
+    if (data.error && !data.content) {
+      throw new Error(data.error);
+    }
+
+    // Toolbar
+    document.getElementById('toolbarNovelTitle').textContent = data.novel_title || NCODE;
+    document.getElementById('toolbarChTitle').textContent = data.title || '';
+    document.getElementById('readerChTitle').textContent = data.title || '';
+    document.title = `${data.title} · ${data.novel_title} · 日文小说`;
+
+    // Content
+    document.getElementById('readerContent').innerHTML = data.content || '<p>内容为空</p>';
+    const fw = document.getElementById('readerForeword');
+    const aw = document.getElementById('readerAfterword');
+    if (data.foreword) {
+      fw.innerHTML = `<div class="word-wrap"><h4>前言</h4>${data.foreword}</div>`;
+    } else {
+      fw.innerHTML = '';
+    }
+    if (data.afterword) {
+      aw.innerHTML = `<div class="word-wrap"><h4>后记</h4>${data.afterword}</div>`;
+    } else {
+      aw.innerHTML = '';
+    }
+
+    // Navigation
+    prevChapter = data.prev_chapter;
+    nextChapter = data.next_chapter;
+    updateNavBtns();
+    syncSettingButtons();
+
+    loading.style.display = 'none';
+    article.style.display = 'block';
+    window.scrollTo(0, 0);
+  } catch(e) {
+    loading.style.display = 'none';
+    errDiv.style.display = 'flex';
+    console.error(e);
+  }
+}
+
+function updateNavBtns() {
+  ['prevBtn','prevBtnBottom'].forEach(id => {
+    const btn = document.getElementById(id);
+    btn.disabled = prevChapter === null;
+  });
+  ['nextBtn','nextBtnBottom'].forEach(id => {
+    const btn = document.getElementById(id);
+    btn.disabled = nextChapter === null;
+  });
+}
+
+function goChapter(dir) {
+  const target = dir === 'prev' ? prevChapter : nextChapter;
+  if (target !== null) {
+    currentChapter = target;
+    history.pushState({}, '', `/read/${NCODE}/${currentChapter}`);
+    loadContent();
+  }
+}
+
+// Settings
+function toggleSettings() {
+  const p = document.getElementById('settingsPanel');
+  p.style.display = p.style.display === 'none' ? 'block' : 'none';
+}
+
+function setFontSize(size) {
+  document.getElementById('readerArticle').style.fontSize = size + 'px';
+  prefs.fontSize = size;
+  savePrefs();
+  syncSettingButtons();
+}
+function setFont(type) {
+  const art = document.getElementById('readerArticle');
+  art.style.fontFamily = type === 'serif'
+    ? "'Noto Serif SC', serif"
+    : "'Noto Sans SC', sans-serif";
+  prefs.font = type;
+  savePrefs();
+  syncSettingButtons();
+}
+function setLineHeight(lh) {
+  document.getElementById('readerArticle').style.lineHeight = lh;
+  prefs.lineHeight = lh;
+  savePrefs();
+  syncSettingButtons();
+}
+function setReaderBg(bg) {
+  document.body.dataset.readerBg = bg;
+  prefs.readerBg = bg;
+  savePrefs();
+  syncSettingButtons();
+}
+function savePrefs() {
+  localStorage.setItem('readerPrefs', JSON.stringify(prefs));
+}
+function applyPrefs() {
+  setFontSize(prefs.fontSize || 18);
+  setFont(prefs.font || 'serif');
+  setLineHeight(prefs.lineHeight || 2.0);
+  setReaderBg(prefs.readerBg || 'sepia');
+}
+
+function syncSettingButtons() {
+  document.querySelectorAll('.settings-inner button').forEach(btn => btn.classList.remove('active'));
+  document.querySelectorAll(`[onclick="setFontSize(${prefs.fontSize || 18})"]`).forEach(btn => btn.classList.add('active'));
+  document.querySelectorAll(`[onclick="setFont('${prefs.font || 'serif'}')"]`).forEach(btn => btn.classList.add('active'));
+  document.querySelectorAll(`[onclick="setLineHeight(${prefs.lineHeight || 2.0})"]`).forEach(btn => btn.classList.add('active'));
+  document.querySelectorAll(`.bg-btn[data-bg="${prefs.readerBg || 'sepia'}"]`).forEach(btn => btn.classList.add('active'));
+}
+
+// Reading progress bar
+window.addEventListener('scroll', () => {
+  const doc = document.documentElement;
+  const pct = doc.scrollTop / (doc.scrollHeight - doc.clientHeight) * 100;
+  document.getElementById('progressBar').style.width = Math.min(100, pct) + '%';
+});
+
+// Keyboard navigation
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  if (e.key === 'ArrowLeft') goChapter('prev');
+  if (e.key === 'ArrowRight') goChapter('next');
+  if (e.key === 's') toggleSettings();
+});
+
+window.addEventListener('popstate', () => {
+  const chapter = Number.parseInt(window.location.pathname.split('/').pop(), 10);
+  if (Number.isInteger(chapter)) {
+    currentChapter = chapter;
+    loadContent();
+  }
+});
+
+applyPrefs();
+loadContent();
+</script>
+{% endblock %}

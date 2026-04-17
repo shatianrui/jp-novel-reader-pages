@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block title %}{{ novel.title }} · 日文小说{% endblock %}
+
+{% block content %}
+<div class="container novel-detail">
+  <!-- Back -->
+  <a href="/" class="back-link">← 返回首页</a>
+
+  <!-- Novel Info -->
+  <div class="novel-hero">
+    <div class="novel-cover-placeholder">
+      <span class="cover-icon">{{ novel.genre_icon }}</span>
+    </div>
+    <div class="novel-info">
+      <div class="novel-badges">
+        {% if novel.is_completed %}
+        <span class="badge badge-done">完结</span>
+        {% else %}
+        <span class="badge badge-ongoing">连载中</span>
+        {% endif %}
+        {% if not novel.is_series %}
+        <span class="badge badge-short">短篇</span>
+        {% endif %}
+        <span class="badge badge-genre">{{ novel.genre_icon }} {{ novel.genre_name }}</span>
+      </div>
+      <h1 class="novel-title-jp">{{ novel.title }}</h1>
+      <p class="novel-author">作者：<strong>{{ novel.writer }}</strong></p>
+      <div class="novel-stats">
+        <div class="stat-item">
+          <span class="stat-icon">⭐</span>
+          <span class="stat-val">{{ "{:,}".format(novel.fav_novel_cnt or 0) }}</span>
+          <span class="stat-label">收藏</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-icon">🏆</span>
+          <span class="stat-val">{{ "{:,}".format(novel.general_all_no or 0) }}</span>
+          <span class="stat-label">评分</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-icon">📝</span>
+          <span class="stat-val">{{ novel.length_label }}</span>
+          <span class="stat-label">字数</span>
+        </div>
+      </div>
+      {% if novel.keyword %}
+      <div class="tags-wrap">
+        {% for kw in novel.keyword.split() %}
+        <span class="tag">{{ kw }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
+      <div class="novel-actions">
+        <button class="btn-primary" id="startReadBtn" onclick="startRead()">开始阅读</button>
+        <a href="https://ncode.syosetu.com/{{ ncode }}/" target="_blank" class="btn-outline">原站查看</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Synopsis -->
+  <div class="synopsis-box">
+    <h2 class="section-title">📋 简介</h2>
+    <div class="synopsis-text" id="synopsisText">
+      {{ novel.story | replace('\n', '<br>') | safe }}
+    </div>
+  </div>
+
+  <!-- Chapter List -->
+  <div class="chapter-section">
+    <h2 class="section-title">📚 章节列表</h2>
+    <div class="chapter-list-wrap" id="chapterListWrap">
+      <div class="loading" id="chapterLoading">
+        <div class="spinner"></div><p>正在加载章节…</p>
+      </div>
+      <div id="chapterContent"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const NCODE = '{{ ncode }}';
+let allChapters = [];
+
+async function loadChapters() {
+  try {
+    const res = await fetch(`/api/chapters/${NCODE}`);
+    const data = await res.json();
+    allChapters = data.chapters || [];
+    renderChapters(data.arcs || [], allChapters);
+    document.getElementById('chapterLoading').style.display = 'none';
+  } catch(e) {
+    document.getElementById('chapterLoading').innerHTML = '<p style="color:var(--err)">章节加载失败，请刷新重试</p>';
+  }
+}
+
+function renderChapters(arcs, chapters) {
+  const cont = document.getElementById('chapterContent');
+  if (chapters.length === 0) {
+    cont.innerHTML = '<p class="no-chapters">该小说为短篇，<a href="/read/' + NCODE + '/1">点击直接阅读</a></p>';
+    return;
+  }
+
+  if (arcs.length > 0 && arcs.some(a => a.chapters.length > 0)) {
+    // Has arcs
+    arcs.forEach(arc => {
+      if (arc.chapters.length === 0) return;
+      const arcDiv = document.createElement('div');
+      arcDiv.className = 'arc-block';
+      arcDiv.innerHTML = `<div class="arc-title">${escHtml(arc.title)}</div>`;
+      const ul = document.createElement('ul');
+      ul.className = 'chapter-ul';
+      arc.chapters.forEach(ch => {
+        ul.appendChild(buildChapterItem(ch));
+      });
+      arcDiv.appendChild(ul);
+      cont.appendChild(arcDiv);
+    });
+  } else {
+    const ul = document.createElement('ul');
+    ul.className = 'chapter-ul';
+    chapters.forEach(ch => ul.appendChild(buildChapterItem(ch)));
+    cont.appendChild(ul);
+  }
+}
+
+function buildChapterItem(ch) {
+  const li = document.createElement('li');
+  li.className = 'chapter-item';
+  li.innerHTML = `
+    <a href="/read/${NCODE}/${ch.num}" class="chapter-link">
+      <span class="ch-num">第 ${ch.num} 话</span>
+      <span class="ch-title">${escHtml(ch.title)}</span>
+      ${ch.date ? `<span class="ch-date">${escHtml(ch.date)}</span>` : ''}
+    </a>
+  `;
+  return li;
+}
+
+function startRead() {
+  if (allChapters.length > 0) {
+    window.location.href = `/read/${NCODE}/${allChapters[0].num}`;
+  } else {
+    window.location.href = `/read/${NCODE}/1`;
+  }
+}
+
+function escHtml(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+loadChapters();
+</script>
+{% endblock %}

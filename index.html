@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>日文小说 · 首页</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=Noto+Serif+SC:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="static/css/style.css">
+</head>
+<body class="light">
+  <nav class="navbar">
+    <div class="nav-inner">
+      <a href="index.html" class="logo">
+        <span class="logo-red">日文</span><span class="logo-gray">小说</span>
+      </a>
+      <div class="nav-links">
+        <a href="index.html" class="nav-link">首页</a>
+        <a href="index.html?order=hyoka" class="nav-link">排行榜</a>
+        <a href="index.html?order=favnovelcnt" class="nav-link">热门收藏</a>
+        <a href="index.html?order=new" class="nav-link">最新更新</a>
+      </div>
+      <button class="theme-btn" id="themeBtn" title="切换主题">🌙</button>
+    </div>
+  </nav>
+
+  <main>
+    <section class="hero">
+      <div class="hero-inner">
+        <h1 class="hero-title">📖 日文小说阅读</h1>
+        <p class="hero-sub">来自「小説家になろう」的海量日文小说，免费阅读</p>
+        <div class="search-wrap">
+          <input type="text" id="searchInput" class="search-input"
+                 placeholder="搜索小说标题、作者、关键词…" autocomplete="off">
+          <button class="search-btn" id="searchBtn">搜索</button>
+        </div>
+      </div>
+    </section>
+
+    <div class="filters-bar">
+      <div class="filters-inner">
+        <div class="filter-group">
+          <span class="filter-label">分类：</span>
+          <div class="genre-chips" id="genreChips">
+            <button class="chip active" data-genre="">全部</button>
+            <button class="chip" data-genre="201">⚔️ 高幻想</button>
+            <button class="chip" data-genre="101">💕 异世界恋爱</button>
+            <button class="chip" data-genre="401">🎮 VR游戏</button>
+            <button class="chip" data-genre="306">💥 动作</button>
+            <button class="chip" data-genre="304">🔍 推理</button>
+            <button class="chip" data-genre="305">👻 恐怖</button>
+            <button class="chip" data-genre="307">😂 喜剧</button>
+            <button class="chip" data-genre="303">🏯 历史</button>
+            <button class="chip" data-genre="402">🚀 科幻</button>
+            <button class="chip" data-genre="302">🎭 人情剧</button>
+          </div>
+        </div>
+        <div class="filter-group">
+          <span class="filter-label">排序：</span>
+          <select class="sort-select" id="sortSelect">
+            <option value="hyoka">综合评分</option>
+            <option value="favnovelcnt">收藏数</option>
+            <option value="new">最新更新</option>
+            <option value="weekly">本周热门</option>
+            <option value="lengthdesc">字数最多</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="results-bar" id="resultsBar" style="display:none">
+      <span id="resultsInfo"></span>
+    </div>
+
+    <div class="container">
+      <div class="novel-grid" id="novelGrid"></div>
+      <div class="loading" id="loading">
+        <div class="spinner"></div>
+        <p>正在加载…</p>
+      </div>
+      <div class="empty" id="emptyState" style="display:none">
+        <p>😔 暂无结果，换个关键词试试吧</p>
+      </div>
+      <div class="pagination" id="pagination"></div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <p>内容来源：<a href="https://syosetu.com" target="_blank" rel="noopener">小説家になろう</a>（合法公开平台）</p>
+      <p>本站仅供日语学习与交流，版权归原作者所有</p>
+    </div>
+  </footer>
+
+  <script src="static/js/app.js"></script>
+  <script src="static/js/common.js"></script>
+  <script src="static/js/index-page.js"></script>
+</body>
+</html>
