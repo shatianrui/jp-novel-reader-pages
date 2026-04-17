@@ -207,7 +207,7 @@ function setReaderBg(background) {
 }
 
 function applyPrefs() {
-  setFontSize(prefs.fontSize || 18);
+  setFontSize(prefs.fontSize || 21);
   setFont(prefs.font || "serif");
   setLineHeight(prefs.lineHeight || 2);
   setReaderBg(prefs.readerBg || "sepia");
@@ -215,7 +215,7 @@ function applyPrefs() {
 
 function syncSettingButtons() {
   document.querySelectorAll("[data-font-size]").forEach((button) => {
-    button.classList.toggle("active", Number(button.dataset.fontSize) === (prefs.fontSize || 18));
+    button.classList.toggle("active", Number(button.dataset.fontSize) === (prefs.fontSize || 21));
   });
   document.querySelectorAll("[data-font]").forEach((button) => {
     button.classList.toggle("active", button.dataset.font === (prefs.font || "serif"));

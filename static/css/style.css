@@ -582,7 +582,7 @@ main {
   background: var(--reader-bg);
   color: var(--text);
   font-family: 'Noto Serif SC', serif;
-  font-size: 18px;
+  font-size: 20px;
   line-height: 2;
 }
 
@@ -862,8 +862,8 @@ main {
   }
 
   .reader-article {
-    font-size: 17px;
-    line-height: 1.9;
+    font-size: 19px;
+    line-height: 2;
   }
 
   .reader-nav-bottom {
