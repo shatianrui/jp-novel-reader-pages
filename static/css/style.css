@@ -13,6 +13,10 @@
   --success: #16a34a;
   --shadow: 0 14px 40px rgba(15, 23, 42, 0.08);
   --reader-bg: #f8f3e8;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
 }
 
 body.dark {
@@ -32,7 +36,10 @@ body[data-reader-bg='dark'] { --reader-bg: #111827; }
 
 * { box-sizing: border-box; }
 
-html { scroll-behavior: smooth; }
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
 
 body {
   margin: 0;
@@ -79,6 +86,7 @@ main {
   position: sticky;
   top: 0;
   z-index: 50;
+  padding-top: var(--safe-top);
   backdrop-filter: blur(14px);
   background: color-mix(in srgb, var(--panel) 92%, transparent);
   border-bottom: 1px solid var(--line);
@@ -669,5 +677,205 @@ main {
 
   .chapter-link {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 460px) {
+  .container,
+  .nav-inner,
+  .hero-inner,
+  .filters-inner,
+  .results-bar,
+  .footer-inner,
+  .reader-toolbar,
+  .reader-wrap,
+  .reader-nav-bottom {
+    width: min(100% - 14px, 1120px);
+  }
+
+  .nav-inner {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      "logo theme"
+      "links links";
+    align-items: center;
+    gap: 10px;
+  }
+
+  .logo { grid-area: logo; }
+  .theme-btn { grid-area: theme; }
+
+  .nav-links {
+    grid-area: links;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 10px;
+    padding-bottom: 2px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .nav-links::-webkit-scrollbar { display: none; }
+
+  .nav-link {
+    white-space: nowrap;
+    padding: 9px 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--panel-soft);
+  }
+
+  .theme-btn,
+  .search-btn,
+  .btn-primary,
+  .chip,
+  .sort-select,
+  .toolbar-btn,
+  .nav-big-btn,
+  .settings-inner button {
+    min-height: 44px;
+  }
+
+  .hero {
+    padding: 24px 0 16px;
+  }
+
+  .hero-inner {
+    padding: 20px 16px;
+    border-radius: 16px;
+  }
+
+  .hero-sub {
+    margin-bottom: 18px;
+    font-size: 0.95rem;
+  }
+
+  .search-input {
+    padding: 14px 14px;
+    min-height: 46px;
+  }
+
+  .filters-inner {
+    gap: 14px;
+  }
+
+  .filter-group {
+    width: 100%;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .genre-chips {
+    width: 100%;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .genre-chips::-webkit-scrollbar { display: none; }
+
+  .chip {
+    white-space: nowrap;
+  }
+
+  .sort-select {
+    width: 100%;
+  }
+
+  .card-link {
+    padding: 16px;
+  }
+
+  .card-title {
+    font-size: 1.05rem;
+  }
+
+  .novel-hero {
+    gap: 16px;
+    padding: 16px;
+  }
+
+  .novel-stats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .stat-item {
+    min-width: 0;
+    padding: 12px;
+  }
+
+  .novel-actions {
+    width: 100%;
+  }
+
+  .novel-actions .btn-primary,
+  .novel-actions .btn-outline {
+    width: 100%;
+    text-align: center;
+  }
+
+  .chapter-link {
+    gap: 6px;
+    padding: 12px 0;
+  }
+
+  .ch-date {
+    text-align: left;
+  }
+
+  .reader-toolbar {
+    top: calc(8px + var(--safe-top));
+    margin-top: 8px;
+    padding: 12px;
+    border-radius: 14px;
+  }
+
+  .toolbar-right {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .toolbar-btn {
+    width: 100%;
+    padding: 10px 8px;
+  }
+
+  .settings-panel {
+    top: calc(86px + var(--safe-top));
+  }
+
+  .reader-wrap {
+    padding-top: 12px;
+  }
+
+  .reader-article {
+    font-size: 17px;
+    line-height: 1.9;
+  }
+
+  .reader-nav-bottom {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    padding: 12px;
+    bottom: calc(8px + var(--safe-bottom));
+    margin-bottom: calc(10px + var(--safe-bottom));
+    border-radius: 14px;
+  }
+
+  .nav-big-btn {
+    width: 100%;
+    padding: 10px 8px;
+    font-size: 0.95rem;
+  }
+
+  .footer-inner {
+    padding-bottom: calc(12px + var(--safe-bottom));
   }
 }
