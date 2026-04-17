@@ -865,7 +865,7 @@ main {
     gap: 8px;
     padding: 12px;
     bottom: calc(8px + var(--safe-bottom));
-    margin-bottom: calc(10px + var(--safe-bottom));
+    margin-bottom: 10px;
     border-radius: 14px;
   }
 
