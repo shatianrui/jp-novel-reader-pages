@@ -14,7 +14,7 @@
   --shadow: 0 14px 40px rgba(15, 23, 42, 0.08);
   --reader-bg: #f8f3e8;
   --max-content-width: 1120px;
-  --mobile-inline-padding-total: 14px;
+  --mobile-inline-padding-total: 20px;
   --reader-mobile-edge-offset: 8px;
   --reader-mobile-toolbar-height: 78px;
   --reader-mobile-settings-top: calc(
