@@ -14,7 +14,9 @@
   --shadow: 0 14px 40px rgba(15, 23, 42, 0.08);
   --reader-bg: #f8f3e8;
   --max-content-width: 1120px;
-  --mobile-inline-offset: 14px;
+  --mobile-total-inline-space: 14px;
+  --reader-mobile-edge-offset: 8px;
+  --reader-mobile-settings-top: 86px;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -692,7 +694,7 @@ main {
   .reader-toolbar,
   .reader-wrap,
   .reader-nav-bottom {
-    width: min(100% - var(--mobile-inline-offset), var(--max-content-width));
+    width: min(100% - var(--mobile-total-inline-space), var(--max-content-width));
   }
 
   .nav-inner {
@@ -831,8 +833,8 @@ main {
   }
 
   .reader-toolbar {
-    top: calc(8px + var(--safe-top));
-    margin-top: 8px;
+    top: calc(var(--reader-mobile-edge-offset) + var(--safe-top));
+    margin-top: var(--reader-mobile-edge-offset);
     padding: 12px;
     border-radius: 14px;
   }
@@ -849,7 +851,7 @@ main {
   }
 
   .settings-panel {
-    top: calc(86px + var(--safe-top));
+    top: calc(var(--reader-mobile-settings-top) + var(--safe-top));
   }
 
   .reader-wrap {
@@ -866,8 +868,8 @@ main {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 8px;
     padding: 12px;
-    bottom: calc(8px + var(--safe-bottom));
-    margin-bottom: 8px;
+    bottom: calc(var(--reader-mobile-edge-offset) + var(--safe-bottom));
+    margin-bottom: var(--reader-mobile-edge-offset);
     border-radius: 14px;
   }
 
