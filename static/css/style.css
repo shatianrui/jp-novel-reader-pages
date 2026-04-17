@@ -14,7 +14,7 @@
   --shadow: 0 14px 40px rgba(15, 23, 42, 0.08);
   --reader-bg: #f8f3e8;
   --max-content-width: 1120px;
-  --mobile-total-inline-space: 14px;
+  --mobile-inline-padding-total: 14px;
   --reader-mobile-edge-offset: 8px;
   --reader-mobile-toolbar-height: 78px;
   --reader-mobile-settings-top: calc(
@@ -687,7 +687,7 @@ main {
   }
 }
 
-@media (max-width: 460px) {
+@media (max-width: 460px) { /* iPhone 16 Pro Max and similar devices */
   .container,
   .nav-inner,
   .hero-inner,
@@ -697,7 +697,7 @@ main {
   .reader-toolbar,
   .reader-wrap,
   .reader-nav-bottom {
-    width: min(100% - var(--mobile-total-inline-space), var(--max-content-width));
+    width: min(100% - var(--mobile-inline-padding-total), var(--max-content-width));
   }
 
   .nav-inner {
