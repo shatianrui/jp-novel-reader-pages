@@ -33,10 +33,10 @@ body { background: var(--reader-bg); }
     <div class="setting-row">
       <span>字体大小</span>
       <div class="btn-group">
-        <button onclick="setFontSize(16)">小</button>
-        <button onclick="setFontSize(18)" class="active">中</button>
-        <button onclick="setFontSize(21)">大</button>
-        <button onclick="setFontSize(24)">特大</button>
+        <button onclick="setFontSize(18)">小</button>
+        <button onclick="setFontSize(21)" class="active">中</button>
+        <button onclick="setFontSize(24)">大</button>
+        <button onclick="setFontSize(28)">特大</button>
       </div>
     </div>
     <div class="setting-row">
@@ -100,6 +100,7 @@ const NCODE = '{{ ncode }}';
 let currentChapter = parseInt('{{ chapter }}', 10);
 let prevChapter = null;
 let nextChapter = null;
+const DEFAULT_FONT_SIZE = 21;
 
 // Reading preferences
 let prefs = JSON.parse(localStorage.getItem('readerPrefs') || '{}');
@@ -215,7 +216,7 @@ function savePrefs() {
   localStorage.setItem('readerPrefs', JSON.stringify(prefs));
 }
 function applyPrefs() {
-  setFontSize(prefs.fontSize || 18);
+  setFontSize(prefs.fontSize || DEFAULT_FONT_SIZE);
   setFont(prefs.font || 'serif');
   setLineHeight(prefs.lineHeight || 2.0);
   setReaderBg(prefs.readerBg || 'sepia');
@@ -223,7 +224,7 @@ function applyPrefs() {
 
 function syncSettingButtons() {
   document.querySelectorAll('.settings-inner button').forEach(btn => btn.classList.remove('active'));
-  document.querySelectorAll(`[onclick="setFontSize(${prefs.fontSize || 18})"]`).forEach(btn => btn.classList.add('active'));
+  document.querySelectorAll(`[onclick="setFontSize(${prefs.fontSize || DEFAULT_FONT_SIZE})"]`).forEach(btn => btn.classList.add('active'));
   document.querySelectorAll(`[onclick="setFont('${prefs.font || 'serif'}')"]`).forEach(btn => btn.classList.add('active'));
   document.querySelectorAll(`[onclick="setLineHeight(${prefs.lineHeight || 2.0})"]`).forEach(btn => btn.classList.add('active'));
   document.querySelectorAll(`.bg-btn[data-bg="${prefs.readerBg || 'sepia'}"]`).forEach(btn => btn.classList.add('active'));

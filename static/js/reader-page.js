@@ -3,6 +3,7 @@ let currentChapter = parsePositiveInt(getQueryParam("chapter"), 1);
 let prevChapter = null;
 let nextChapter = null;
 let prefs = JSON.parse(localStorage.getItem("readerPrefs") || "{}");
+const DEFAULT_FONT_SIZE = 21;
 
 const catalogLink = document.getElementById("catalogLink");
 const catalogLinkBottom = document.getElementById("catalogLinkBottom");
@@ -207,7 +208,7 @@ function setReaderBg(background) {
 }
 
 function applyPrefs() {
-  setFontSize(prefs.fontSize || 18);
+  setFontSize(prefs.fontSize || DEFAULT_FONT_SIZE);
   setFont(prefs.font || "serif");
   setLineHeight(prefs.lineHeight || 2);
   setReaderBg(prefs.readerBg || "sepia");
@@ -215,7 +216,7 @@ function applyPrefs() {
 
 function syncSettingButtons() {
   document.querySelectorAll("[data-font-size]").forEach((button) => {
-    button.classList.toggle("active", Number(button.dataset.fontSize) === (prefs.fontSize || 18));
+    button.classList.toggle("active", Number(button.dataset.fontSize) === (prefs.fontSize || DEFAULT_FONT_SIZE));
   });
   document.querySelectorAll("[data-font]").forEach((button) => {
     button.classList.toggle("active", button.dataset.font === (prefs.font || "serif"));
