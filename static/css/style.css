@@ -13,7 +13,8 @@
   --success: #16a34a;
   --shadow: 0 14px 40px rgba(15, 23, 42, 0.08);
   --reader-bg: #f8f3e8;
-  --mobile-gutter: 14px;
+  --max-content-width: 1120px;
+  --mobile-inline-offset: 14px;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -79,7 +80,7 @@ main {
 .reader-toolbar,
 .reader-wrap,
 .reader-nav-bottom {
-  width: min(1120px, calc(100% - 32px));
+  width: min(var(--max-content-width), calc(100% - 32px));
   margin: 0 auto;
 }
 
@@ -656,7 +657,7 @@ main {
   .reader-toolbar,
   .reader-wrap,
   .reader-nav-bottom {
-    width: min(100% - 20px, 1120px);
+    width: min(100% - 20px, var(--max-content-width));
   }
 
   .hero-inner,
@@ -691,7 +692,7 @@ main {
   .reader-toolbar,
   .reader-wrap,
   .reader-nav-bottom {
-    width: min(100% - var(--mobile-gutter), 1120px);
+    width: min(100% - var(--mobile-inline-offset), var(--max-content-width));
   }
 
   .nav-inner {
