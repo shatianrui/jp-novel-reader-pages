@@ -4,6 +4,8 @@ let prevChapter = null;
 let nextChapter = null;
 let prefs = JSON.parse(localStorage.getItem("readerPrefs") || "{}");
 const DEFAULT_FONT_SIZE = 21;
+let chapterChangedByNavigation = false;
+let progressSaveTimer = null;
 
 const catalogLink = document.getElementById("catalogLink");
 const catalogLinkBottom = document.getElementById("catalogLinkBottom");
@@ -36,6 +38,7 @@ window.addEventListener("scroll", () => {
   const denominator = doc.scrollHeight - doc.clientHeight;
   const percentage = denominator > 0 ? (doc.scrollTop / denominator) * 100 : 0;
   progressBar.style.width = `${Math.min(100, percentage)}%`;
+  scheduleSaveProgress();
 });
 
 document.addEventListener("keydown", (event) => {
@@ -55,11 +58,20 @@ document.addEventListener("keydown", (event) => {
 
 window.addEventListener("popstate", () => {
   currentChapter = parsePositiveInt(getQueryParam("chapter"), currentChapter);
+  chapterChangedByNavigation = false;
   loadContent().catch((error) => {
     console.error(error);
     showReaderError();
   });
 });
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") {
+    saveReadingProgressNow();
+  }
+});
+
+window.addEventListener("beforeunload", saveReadingProgressNow);
 
 async function loadContent() {
   readerArticle.style.display = "none";
@@ -100,7 +112,9 @@ async function loadContent() {
 
   readerLoading.style.display = "none";
   readerArticle.style.display = "block";
-  window.scrollTo(0, 0);
+  restoreReadingPosition();
+  saveReadingProgressNow();
+  chapterChangedByNavigation = false;
 }
 
 function parseChapterNavigation(doc) {
@@ -148,7 +162,9 @@ function goChapter(direction) {
   if (target === null) {
     return;
   }
+  saveReadingProgressNow();
   currentChapter = target;
+  chapterChangedByNavigation = true;
   history.pushState({}, "", getReadUrl(readerNcode, currentChapter));
   loadContent().catch((error) => {
     console.error(error);
@@ -233,4 +249,50 @@ function showReaderError() {
   readerLoading.style.display = "none";
   readerArticle.style.display = "none";
   readerError.style.display = "flex";
+}
+
+function getScrollRatio() {
+  const doc = document.documentElement;
+  const denominator = doc.scrollHeight - doc.clientHeight;
+  if (denominator <= 0) {
+    return 0;
+  }
+  return Math.min(1, Math.max(0, doc.scrollTop / denominator));
+}
+
+function restoreReadingPosition() {
+  const progress = getReadingProgress(readerNcode);
+  const savedChapter = parsePositiveInt(progress?.chapter, 0);
+  const savedRatio = Number(progress?.scrollRatio);
+  if (chapterChangedByNavigation || savedChapter !== currentChapter || !Number.isFinite(savedRatio) || savedRatio <= 0) {
+    window.scrollTo(0, 0);
+    return;
+  }
+
+  window.requestAnimationFrame(() => {
+    const doc = document.documentElement;
+    const denominator = doc.scrollHeight - doc.clientHeight;
+    const targetTop = denominator > 0 ? Math.round(Math.min(1, Math.max(0, savedRatio)) * denominator) : 0;
+    window.scrollTo(0, targetTop);
+  });
+}
+
+function saveReadingProgressNow() {
+  if (!readerNcode) {
+    return;
+  }
+  setReadingProgress(readerNcode, {
+    chapter: currentChapter,
+    scrollRatio: getScrollRatio(),
+  });
+}
+
+function scheduleSaveProgress() {
+  if (progressSaveTimer !== null) {
+    return;
+  }
+  progressSaveTimer = window.setTimeout(() => {
+    progressSaveTimer = null;
+    saveReadingProgressNow();
+  }, 300);
 }

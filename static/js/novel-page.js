@@ -23,7 +23,7 @@ if (!currentNcode) {
 }
 
 startReadBtn.addEventListener("click", () => {
-  const targetChapter = allChapters.length > 0 ? allChapters[0].num : 1;
+  const targetChapter = getResumeChapter(currentNcode, allChapters, 1);
   window.location.href = getReadUrl(currentNcode, targetChapter);
 });
 
@@ -38,6 +38,7 @@ async function loadNovelPage() {
   }
 
   renderNovel(novel);
+  updateStartReadText();
   detailLoading.style.display = "none";
   detailContent.style.display = "block";
   await loadChapters();
@@ -78,6 +79,7 @@ async function loadChapters() {
     const parsed = parseChapterList(doc);
     allChapters = parsed.chapters;
     renderChapters(parsed.arcs, parsed.chapters);
+    updateStartReadText();
     chapterLoading.style.display = "none";
   } catch (error) {
     console.error(error);
@@ -155,6 +157,12 @@ function renderChapters(arcs, chapters) {
   list.className = "chapter-ul";
   chapters.forEach((chapter) => list.appendChild(buildChapterItem(chapter)));
   chapterContent.appendChild(list);
+}
+
+function updateStartReadText() {
+  const resumeChapter = getResumeChapter(currentNcode, allChapters, 1);
+  const firstChapter = allChapters.length > 0 ? parsePositiveInt(allChapters[0].num, 1) : 1;
+  startReadBtn.textContent = resumeChapter > firstChapter ? `继续阅读（第 ${resumeChapter} 话）` : "开始阅读";
 }
 
 function buildChapterItem(chapter) {

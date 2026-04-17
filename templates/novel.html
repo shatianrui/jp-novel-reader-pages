@@ -81,6 +81,7 @@
 <script>
 const NCODE = '{{ ncode }}';
 let allChapters = [];
+const READING_PROGRESS_KEY = 'readingProgress';
 
 async function loadChapters() {
   try {
@@ -88,6 +89,7 @@ async function loadChapters() {
     const data = await res.json();
     allChapters = data.chapters || [];
     renderChapters(data.arcs || [], allChapters);
+    updateStartReadBtn();
     document.getElementById('chapterLoading').style.display = 'none';
   } catch(e) {
     document.getElementById('chapterLoading').innerHTML = '<p style="color:var(--err)">章节加载失败，请刷新重试</p>';
@@ -138,17 +140,41 @@ function buildChapterItem(ch) {
 }
 
 function startRead() {
-  if (allChapters.length > 0) {
-    window.location.href = `/read/${NCODE}/${allChapters[0].num}`;
-  } else {
-    window.location.href = `/read/${NCODE}/1`;
-  }
+  const chapter = getResumeChapter();
+  window.location.href = `/read/${NCODE}/${chapter}`;
 }
 
 function escHtml(str) {
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
+function getResumeChapter() {
+  const progress = getReadingProgress();
+  const fallback = allChapters.length > 0 ? Number.parseInt(allChapters[0].num, 10) || 1 : 1;
+  const chapter = Number.parseInt(progress?.chapter, 10);
+  if (!Number.isInteger(chapter) || chapter <= 0) return fallback;
+  if (allChapters.length === 0) return chapter;
+  return allChapters.some(ch => Number.parseInt(ch.num, 10) === chapter) ? chapter : fallback;
+}
+
+function getReadingProgress() {
+  try {
+    const map = JSON.parse(localStorage.getItem(READING_PROGRESS_KEY) || '{}');
+    const progress = map[String(NCODE).toLowerCase()];
+    return progress && typeof progress === 'object' ? progress : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function updateStartReadBtn() {
+  const btn = document.getElementById('startReadBtn');
+  const chapter = getResumeChapter();
+  const first = allChapters.length > 0 ? Number.parseInt(allChapters[0].num, 10) || 1 : 1;
+  btn.textContent = chapter > first ? `继续阅读（第 ${chapter} 话）` : '开始阅读';
+}
+
+updateStartReadBtn();
 loadChapters();
 </script>
 {% endblock %}
