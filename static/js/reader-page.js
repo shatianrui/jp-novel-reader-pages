@@ -289,10 +289,16 @@ function saveReadingProgressNow() {
   if (!readerNcode) {
     return;
   }
+  const title = document.getElementById("toolbarNovelTitle")?.textContent || "";
   setReadingProgress(readerNcode, {
     chapter: currentChapter,
     scrollRatio: getScrollRatio(),
+    title: title && title !== "加载中…" ? title : undefined,
   });
+  // Auto-remember on shelf after real reading
+  if (title && title !== "加载中…") {
+    touchShelfFromProgress(readerNcode, { title });
+  }
 }
 
 function scheduleSaveProgress() {

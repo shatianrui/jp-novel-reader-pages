@@ -93,7 +93,8 @@ async function loadNovels() {
     }
 
     resultsBar.style.display = "block";
-    resultsInfo.textContent = `共 ${formatNumber(total)} 部，当前第 ${currentPage} 页`;
+    const demoNote = data?._demo ? " · ⚠️ 离线示例数据（なろう API 不可达）" : "";
+    resultsInfo.textContent = `共 ${formatNumber(total)} 部，当前第 ${currentPage} 页${demoNote}`;
     novels.forEach((novel) => {
       novelGrid.appendChild(buildCard(novel));
     });
@@ -102,6 +103,9 @@ async function loadNovels() {
     console.error(error);
     loading.style.display = "none";
     emptyState.style.display = "block";
+    emptyState.innerHTML = `<p>😔 小说列表加载失败</p>
+      <p style="margin-top:8px;font-size:14px;opacity:.85">${escapeHtml(error?.message || "网络或 API 不可用")}</p>
+      <p style="margin-top:8px;font-size:13px;opacity:.75">若在国内网络，なろう API 可能被拦截；已尝试代理回退。可刷新重试。</p>`;
   }
 }
 

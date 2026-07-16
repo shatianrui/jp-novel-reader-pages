@@ -1,14 +1,20 @@
 const NAROU_API_BASE = "https://api.syosetu.com/novelapi/api/";
 const READING_PROGRESS_KEY = "readingProgress";
+const BOOKSHELF_KEY = "bookshelf";
 const PROXY_STORAGE_KEY = "ncodeProxyBase";
+const PROXY_WINNER_KEY = "ncodeProxyWinner";
+const API_CACHE_KEY = "narouApiCache";
+const API_BLOCKED_KEY = "narouApiBlocked";
+const API_CACHE_TTL_MS = 5 * 60 * 1000;
+const JSONP_TIMEOUT_MS = 2500;
+const PROXY_TIMEOUT_MS = 5000;
 
-// Public CORS proxies (tried in order). Prefer ones that still work for syosetu.
-// Users can override via localStorage key "ncodeProxyBase" or ?proxy= URL param.
+// Public CORS proxies. Override via localStorage ncodeProxyBase or ?proxy=
 const DEFAULT_PROXY_BUILDERS = [
+  (url) => `https://proxy.cors.sh/${url}`,
   (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
   (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
   (url) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
-  (url) => `https://proxy.cors.sh/${url}`,
   (url) => `https://cors.eu.org/${url}`,
 ];
 
@@ -157,17 +163,116 @@ function looksLikeBlockedOrErrorPage(html) {
   return !hasNovelMarkup;
 }
 
-function narouJsonp(params) {
+function cleanNarouParams(params, outMode) {
+  const cleanParams = { ...params, out: outMode };
+  Object.keys(cleanParams).forEach((key) => {
+    if (cleanParams[key] === "" || cleanParams[key] == null) {
+      delete cleanParams[key];
+    }
+  });
+  return cleanParams;
+}
+
+function apiCacheKey(params) {
+  const clean = cleanNarouParams(params, "json");
+  return JSON.stringify(Object.keys(clean).sort().reduce((acc, key) => {
+    acc[key] = clean[key];
+    return acc;
+  }, {}));
+}
+
+function readApiCache(params) {
+  try {
+    const raw = sessionStorage.getItem(API_CACHE_KEY);
+    const map = raw ? JSON.parse(raw) : {};
+    const hit = map[apiCacheKey(params)];
+    if (!hit || !hit.expiresAt || hit.expiresAt < Date.now()) {
+      return null;
+    }
+    return hit.data;
+  } catch (error) {
+    return null;
+  }
+}
+
+function writeApiCache(params, data) {
+  try {
+    const raw = sessionStorage.getItem(API_CACHE_KEY);
+    const map = raw ? JSON.parse(raw) : {};
+    map[apiCacheKey(params)] = { data, expiresAt: Date.now() + API_CACHE_TTL_MS };
+    const keys = Object.keys(map);
+    if (keys.length > 30) {
+      keys.slice(0, keys.length - 30).forEach((key) => delete map[key]);
+    }
+    sessionStorage.setItem(API_CACHE_KEY, JSON.stringify(map));
+  } catch (error) {
+    // ignore quota
+  }
+}
+
+function isApiMarkedBlocked() {
+  try {
+    return localStorage.getItem(API_BLOCKED_KEY) === "1";
+  } catch (error) {
+    return false;
+  }
+}
+
+function markApiBlocked(blocked) {
+  try {
+    if (blocked) {
+      localStorage.setItem(API_BLOCKED_KEY, "1");
+    } else {
+      localStorage.removeItem(API_BLOCKED_KEY);
+    }
+  } catch (error) {
+    // ignore
+  }
+}
+
+function fetchWithTimeout(url, options = {}, timeoutMs = PROXY_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => {
+    window.clearTimeout(timer);
+  });
+}
+
+function reorderProxyBuilders(builders) {
+  let winner = "";
+  try {
+    winner = localStorage.getItem(PROXY_WINNER_KEY) || "";
+  } catch (error) {
+    winner = "";
+  }
+  if (!winner) {
+    return builders;
+  }
+  const scored = builders.map((builder, index) => {
+    try {
+      const sample = builder();
+      return { builder, index, hit: sample.includes(winner) };
+    } catch (error) {
+      return { builder, index, hit: false };
+    }
+  });
+  scored.sort((a, b) => Number(b.hit) - Number(a.hit) || a.index - b.index);
+  return scored.map((item) => item.builder);
+}
+
+function rememberProxyWinner(proxyUrl) {
+  try {
+    const host = new URL(proxyUrl).host;
+    localStorage.setItem(PROXY_WINNER_KEY, host);
+  } catch (error) {
+    // ignore
+  }
+}
+
+function narouJsonpOnce(params) {
   return new Promise((resolve, reject) => {
     const callbackName = `narouJsonp_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-    const cleanParams = { ...params, out: "jsonp", callback: callbackName };
-    // Drop empty optional filters so API does not reject the request.
-    Object.keys(cleanParams).forEach((key) => {
-      if (cleanParams[key] === "" || cleanParams[key] == null) {
-        delete cleanParams[key];
-      }
-    });
-    const query = new URLSearchParams(cleanParams);
+    const query = new URLSearchParams(cleanNarouParams({ ...params, callback: callbackName }, "jsonp"));
     const script = document.createElement("script");
     const cleanup = () => {
       delete window[callbackName];
@@ -177,7 +282,7 @@ function narouJsonp(params) {
     const timer = window.setTimeout(() => {
       cleanup();
       reject(new Error("API 请求超时"));
-    }, 15000);
+    }, JSONP_TIMEOUT_MS);
 
     window[callbackName] = (data) => {
       cleanup();
@@ -186,21 +291,110 @@ function narouJsonp(params) {
 
     script.onerror = () => {
       cleanup();
-      reject(new Error("API 请求失败"));
+      reject(new Error("API JSONP 失败（可能被网络拦截）"));
     };
     script.src = `${NAROU_API_BASE}?${query.toString()}`;
     document.body.appendChild(script);
   });
 }
 
+async function narouFetchOneProxy(builder) {
+  const proxyUrl = builder();
+  const response = await fetchWithTimeout(proxyUrl, {
+    cache: "no-store",
+    headers: { "X-Requested-With": "XMLHttpRequest" },
+  }, PROXY_TIMEOUT_MS);
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+  const text = await response.text();
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("[")) {
+    throw new Error("非 JSON 响应");
+  }
+  const data = JSON.parse(trimmed);
+  if (!Array.isArray(data)) {
+    throw new Error("JSON 格式异常");
+  }
+  rememberProxyWinner(proxyUrl);
+  return data;
+}
+
+async function narouFetchViaProxy(params) {
+  const query = new URLSearchParams(cleanNarouParams(params, "json"));
+  const apiUrl = `${NAROU_API_BASE}?${query.toString()}`;
+  const builders = reorderProxyBuilders(buildProxyCandidates(apiUrl));
+  const errors = [];
+
+  const firstBatch = builders.slice(0, 2);
+  if (firstBatch.length) {
+    try {
+      return await Promise.any(firstBatch.map((builder) => narouFetchOneProxy(builder)));
+    } catch (error) {
+      errors.push("首批代理失败");
+    }
+  }
+
+  for (const builder of builders.slice(2)) {
+    try {
+      return await narouFetchOneProxy(builder);
+    } catch (error) {
+      errors.push(String(error?.message || error));
+    }
+  }
+  throw new Error(`なろう API 代理全部失败：${errors.slice(0, 2).join(" | ")}`);
+}
+
+async function loadDemoNovels() {
+  const response = await fetch("static/data/demo-novels.json", { cache: "force-cache" });
+  if (!response.ok) {
+    throw new Error("示例数据加载失败");
+  }
+  const demo = await response.json();
+  demo._demo = true;
+  return demo;
+}
+
+/** Race JSONP + proxy; cache hits; demo fallback for home list when blocked. */
+async function narouJsonp(params) {
+  const cached = readApiCache(params);
+  if (cached) {
+    return cached;
+  }
+
+  const canUseDemo = !params.ncode && !params.word && !params.genre;
+  if (isApiMarkedBlocked() && canUseDemo) {
+    return loadDemoNovels();
+  }
+
+  const tasks = [];
+  if (!isApiMarkedBlocked()) {
+    tasks.push(narouJsonpOnce(params).then((data) => ({ source: "jsonp", data })));
+  }
+  tasks.push(narouFetchViaProxy(params).then((data) => ({ source: "proxy", data })));
+
+  try {
+    const winner = await Promise.any(tasks);
+    markApiBlocked(false);
+    writeApiCache(params, winner.data);
+    return winner.data;
+  } catch (error) {
+    markApiBlocked(true);
+    if (canUseDemo) {
+      return loadDemoNovels();
+    }
+    throw new Error("なろう API 不可用");
+  }
+}
+
 async function fetchViaBuilder(builder) {
   const proxyUrl = builder();
-  const response = await fetch(proxyUrl, {
+  const response = await fetchWithTimeout(proxyUrl, {
     cache: "no-store",
     headers: {
       "X-Requested-With": "XMLHttpRequest",
     },
-  });
+  }, PROXY_TIMEOUT_MS);
   if (!response.ok) {
     throw new Error(`代理 HTTP ${response.status}`);
   }
@@ -208,14 +402,24 @@ async function fetchViaBuilder(builder) {
   if (looksLikeBlockedOrErrorPage(text)) {
     throw new Error("代理返回了无效/拦截页面");
   }
+  rememberProxyWinner(proxyUrl);
   return text;
 }
 
 async function fetchProxyHtml(url) {
-  const builders = buildProxyCandidates(url);
+  const builders = reorderProxyBuilders(buildProxyCandidates(url));
   const errors = [];
 
-  for (const builder of builders) {
+  const firstBatch = builders.slice(0, 2);
+  if (firstBatch.length) {
+    try {
+      return await Promise.any(firstBatch.map((builder) => fetchViaBuilder(builder)));
+    } catch (error) {
+      errors.push("首批 HTML 代理失败");
+    }
+  }
+
+  for (const builder of builders.slice(2)) {
     try {
       return await fetchViaBuilder(builder);
     } catch (error) {
@@ -341,6 +545,13 @@ function setReadingProgress(ncode, progress) {
     updatedAt: new Date().toISOString(),
   };
   localStorage.setItem(READING_PROGRESS_KEY, JSON.stringify(map));
+  if (isOnShelf(key) || progress.title) {
+    touchShelfFromProgress(key, {
+      title: progress.title || map[key].title,
+      writer: progress.writer,
+      genre_icon: progress.genre_icon,
+    });
+  }
 }
 
 function getResumeChapter(ncode, chapters, defaultChapter = 1) {
@@ -619,6 +830,90 @@ async function fetchAllChapters(ncode) {
 
   merged.chapters.sort((a, b) => a.num - b.num);
   return merged;
+}
+
+
+/* ---------- Bookshelf (local memory) ---------- */
+function loadBookshelfMap() {
+  try {
+    const raw = localStorage.getItem(BOOKSHELF_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (error) {
+    return {};
+  }
+}
+
+function saveBookshelfMap(map) {
+  localStorage.setItem(BOOKSHELF_KEY, JSON.stringify(map));
+}
+
+function listBookshelf() {
+  return Object.values(loadBookshelfMap()).sort((a, b) => {
+    const ta = Date.parse(b.updatedAt || b.addedAt || 0) || 0;
+    const tb = Date.parse(a.updatedAt || a.addedAt || 0) || 0;
+    return ta - tb;
+  });
+}
+
+function isOnShelf(ncode) {
+  const key = normalizeNcode(ncode);
+  return Boolean(key && loadBookshelfMap()[key]);
+}
+
+function addToShelf(novel) {
+  const key = normalizeNcode(novel?.ncode);
+  if (!key) {
+    return null;
+  }
+  const map = loadBookshelfMap();
+  const prev = map[key] || {};
+  const now = new Date().toISOString();
+  map[key] = {
+    ncode: key,
+    title: novel.title || prev.title || key,
+    writer: novel.writer || prev.writer || "",
+    genre: novel.genre ?? prev.genre ?? "",
+    genre_icon: novel.genre_icon || prev.genre_icon || "📖",
+    story: novel.story || prev.story || "",
+    addedAt: prev.addedAt || now,
+    updatedAt: now,
+  };
+  saveBookshelfMap(map);
+  return map[key];
+}
+
+function removeFromShelf(ncode) {
+  const key = normalizeNcode(ncode);
+  if (!key) {
+    return;
+  }
+  const map = loadBookshelfMap();
+  delete map[key];
+  saveBookshelfMap(map);
+}
+
+function touchShelfFromProgress(ncode, extra = {}) {
+  const key = normalizeNcode(ncode);
+  if (!key) {
+    return;
+  }
+  const map = loadBookshelfMap();
+  if (!map[key] && !extra.title) {
+    return;
+  }
+  const now = new Date().toISOString();
+  map[key] = {
+    ncode: key,
+    title: extra.title || map[key]?.title || key,
+    writer: extra.writer || map[key]?.writer || "",
+    genre: extra.genre ?? map[key]?.genre ?? "",
+    genre_icon: extra.genre_icon || map[key]?.genre_icon || "📖",
+    story: extra.story || map[key]?.story || "",
+    addedAt: map[key]?.addedAt || now,
+    updatedAt: now,
+  };
+  saveBookshelfMap(map);
 }
 
 function setErrorText(elementId, message) {

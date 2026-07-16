@@ -9,7 +9,9 @@ const chapterLoading = document.getElementById("chapterLoading");
 const chapterError = document.getElementById("chapterError");
 const chapterContent = document.getElementById("chapterContent");
 const startReadBtn = document.getElementById("startReadBtn");
+const shelfBtn = document.getElementById("shelfBtn");
 const originLink = document.getElementById("originLink");
+let currentNovel = null;
 
 originLink.href = getOriginIndexUrl(currentNcode || "");
 
@@ -23,9 +25,36 @@ if (!currentNcode) {
 }
 
 startReadBtn.addEventListener("click", () => {
+  if (currentNovel) {
+    addToShelf(currentNovel);
+  }
   const targetChapter = getResumeChapter(currentNcode, allChapters, 1);
   window.location.href = getReadUrl(currentNcode, targetChapter);
 });
+
+if (shelfBtn) {
+  shelfBtn.addEventListener("click", () => {
+    if (!currentNovel) {
+      return;
+    }
+    if (isOnShelf(currentNcode)) {
+      removeFromShelf(currentNcode);
+    } else {
+      addToShelf(currentNovel);
+    }
+    syncShelfButton();
+  });
+}
+
+function syncShelfButton() {
+  if (!shelfBtn) {
+    return;
+  }
+  const on = isOnShelf(currentNcode);
+  shelfBtn.textContent = on ? "✓ 已在书架" : "加入书架";
+  shelfBtn.classList.toggle("active", on);
+}
+
 
 async function loadNovelPage() {
   const detailData = await narouJsonp({
@@ -37,7 +66,9 @@ async function loadNovelPage() {
     throw new Error("未找到该小说");
   }
 
+  currentNovel = novel;
   renderNovel(novel);
+  syncShelfButton();
   updateStartReadText();
   detailLoading.style.display = "none";
   detailContent.style.display = "block";

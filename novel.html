@@ -4,9 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>小说详情 · 日文小说</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=Noto+Serif+SC:wght@400;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="static/css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@400;600&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+  <noscript><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@400;600&display=swap" rel="stylesheet"></noscript>
 </head>
 <body class="light">
   <nav class="navbar">
@@ -16,6 +17,7 @@
       </a>
       <div class="nav-links">
         <a href="index.html" class="nav-link">首页</a>
+        <a href="bookshelf.html" class="nav-link">书架</a>
         <a href="index.html?order=hyoka" class="nav-link">排行榜</a>
         <a href="index.html?order=favnovelcnt" class="nav-link">热门收藏</a>
         <a href="index.html?order=new" class="nav-link">最新更新</a>
@@ -66,6 +68,7 @@
             <div class="tags-wrap" id="tagList" style="display:none"></div>
             <div class="novel-actions">
               <button class="btn-primary" id="startReadBtn">开始阅读</button>
+              <button class="btn-outline" id="shelfBtn" type="button">加入书架</button>
               <a target="_blank" rel="noopener" class="btn-outline" id="originLink">原站查看</a>
             </div>
           </div>
