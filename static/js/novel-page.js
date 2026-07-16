@@ -74,65 +74,34 @@ function renderNovel(novel) {
 
 async function loadChapters() {
   try {
-    const html = await fetchProxyHtml(getOriginIndexUrl(currentNcode));
-    const doc = parseHtml(html);
-    const parsed = parseChapterList(doc);
+    const parsed = await fetchAllChapters(currentNcode);
     allChapters = parsed.chapters;
     renderChapters(parsed.arcs, parsed.chapters);
     updateStartReadText();
     chapterLoading.style.display = "none";
+    if (parsed.chapters.length === 0) {
+      chapterError.style.display = "flex";
+      chapterError.innerHTML = `
+        <p>未能解析章节列表（站点结构可能已变更，或代理暂时不可用）</p>
+        <p><a href="${getOriginIndexUrl(currentNcode)}" target="_blank" rel="noopener">在原站查看目录</a>
+        · <a href="${getReadUrl(currentNcode, 1)}">尝试直接阅读第 1 话</a></p>`;
+    }
   } catch (error) {
     console.error(error);
     chapterLoading.style.display = "none";
     chapterError.style.display = "flex";
+    chapterError.innerHTML = `
+      <p>章节加载失败：${escapeHtml(error?.message || "未知错误")}</p>
+      <p>可先通过“原站查看”继续阅读，或稍后重试。</p>
+      <p><a href="${getOriginIndexUrl(currentNcode)}" target="_blank" rel="noopener">打开原站目录</a>
+      · <a href="${getReadUrl(currentNcode, 1)}">尝试直接阅读第 1 话</a></p>`;
   }
-}
-
-function parseChapterList(doc) {
-  const chapters = [];
-  const arcs = [];
-  let currentArc = null;
-  const indexBox = doc.querySelector("div.index_box");
-
-  if (!indexBox) {
-    return { chapters, arcs };
-  }
-
-  getChildElements(indexBox).forEach((element) => {
-    if (element.classList.contains("chapter_title")) {
-      currentArc = { title: element.textContent.trim(), chapters: [] };
-      arcs.push(currentArc);
-      return;
-    }
-
-    if (element.tagName !== "DL") {
-      return;
-    }
-
-    const dd = element.querySelector("dd.subtitle");
-    const dt = element.querySelector("dt");
-    const link = dd?.querySelector("a");
-    if (!link) {
-      return;
-    }
-
-    const entry = {
-      num: extractChapterNumber(link.getAttribute("href"), chapters.length + 1),
-      title: link.textContent.trim(),
-      date: dt?.textContent.trim() || "",
-    };
-    chapters.push(entry);
-    if (currentArc) {
-      currentArc.chapters.push(entry);
-    }
-  });
-
-  return { chapters, arcs };
 }
 
 function renderChapters(arcs, chapters) {
+  chapterContent.innerHTML = "";
   if (chapters.length === 0) {
-    chapterContent.innerHTML = `<p class="no-chapters">该小说为短篇，<a href="${getReadUrl(currentNcode, 1)}">点击直接阅读</a></p>`;
+    chapterContent.innerHTML = `<p class="no-chapters">暂未获取到章节。该小说也可能是短篇，<a href="${getReadUrl(currentNcode, 1)}">点击尝试阅读</a></p>`;
     return;
   }
 
@@ -150,6 +119,15 @@ function renderChapters(arcs, chapters) {
       arcBlock.appendChild(list);
       chapterContent.appendChild(arcBlock);
     });
+    // Append any chapters not grouped into arcs
+    const arcNums = new Set(arcs.flatMap((arc) => arc.chapters.map((c) => c.num)));
+    const orphans = chapters.filter((chapter) => !arcNums.has(chapter.num));
+    if (orphans.length > 0) {
+      const list = document.createElement("ul");
+      list.className = "chapter-ul";
+      orphans.forEach((chapter) => list.appendChild(buildChapterItem(chapter)));
+      chapterContent.appendChild(list);
+    }
     return;
   }
 

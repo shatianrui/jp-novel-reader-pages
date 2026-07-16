@@ -1,4 +1,5 @@
 import os
+import re
 
 from flask import Flask, render_template, request, jsonify
 import requests
@@ -9,10 +10,15 @@ app = Flask(__name__)
 NAROU_API = "https://api.syosetu.com/novelapi/api/"
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                  "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                  "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "ja,zh-CN;q=0.8,zh;q=0.6",
+    "Accept-Language": "ja,ja-JP;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Cache-Control": "no-cache",
 }
+SESSION = requests.Session()
+SESSION.headers.update(HEADERS)
+SESSION.cookies.set("over18", "yes", domain="syosetu.com")
+SESSION.cookies.set("sasieno", "0", domain="syosetu.com")
 
 GENRE_MAP = {
     "101": "异世界·恋爱", "102": "现实世界·恋爱",
@@ -54,6 +60,171 @@ def enrich_novel(novel):
     return novel
 
 
+def extract_chapter_number(href, fallback=None):
+    parts = [p for p in str(href or "").strip("/").split("/") if p]
+    for part in reversed(parts):
+        if part.isdigit():
+            return int(part)
+    return fallback
+
+
+def _fetch(url, timeout=15):
+    resp = SESSION.get(url, timeout=timeout)
+    resp.encoding = resp.apparent_encoding or "utf-8"
+    return resp
+
+
+def _parse_toc_page(soup):
+    chapters = []
+    arcs = []
+    current_arc = None
+
+    eplist = soup.select_one("div.p-eplist")
+    if eplist:
+        for elem in eplist.select(".p-eplist__chapter-title, a"):
+            classes = elem.get("class") or []
+            if "p-eplist__chapter-title" in classes:
+                current_arc = {"title": elem.get_text(strip=True), "chapters": []}
+                arcs.append(current_arc)
+                continue
+            if elem.name != "a":
+                continue
+            href = elem.get("href", "")
+            num = extract_chapter_number(href, None)
+            if num is None:
+                continue
+            if any(c["num"] == num for c in chapters):
+                continue
+            date = ""
+            parent = elem.find_parent(["div", "li"])
+            if parent:
+                date_node = parent.select_one(".p-eplist__update, .long_update, time, .p-eplist__date")
+                if date_node and date_node is not elem:
+                    date = date_node.get_text(strip=True)
+            entry = {"num": num, "title": elem.get_text(strip=True), "date": date}
+            chapters.append(entry)
+            if current_arc is not None:
+                current_arc["chapters"].append(entry)
+        return chapters, arcs
+
+    index_box = soup.find("div", class_="index_box")
+    if not index_box:
+        return chapters, arcs
+
+    for elem in index_box.children:
+        if not hasattr(elem, "name") or elem.name is None:
+            continue
+        classes = elem.get("class") or []
+        if "chapter_title" in classes:
+            current_arc = {"title": elem.get_text(strip=True), "chapters": []}
+            arcs.append(current_arc)
+        elif elem.name == "dl":
+            dd = elem.find("dd", class_="subtitle")
+            dt = elem.find("dt")
+            if not dd:
+                continue
+            link = dd.find("a")
+            if not link:
+                continue
+            href = link.get("href", "")
+            num = extract_chapter_number(href, len(chapters) + 1)
+            date = dt.get_text(strip=True) if dt else ""
+            entry = {"num": num, "title": link.get_text(strip=True), "date": date}
+            chapters.append(entry)
+            if arcs:
+                arcs[-1]["chapters"].append(entry)
+    return chapters, arcs
+
+
+def _toc_page_count(soup):
+    last = soup.select_one("a.c-pager__item--last, a.novelview_pager-last")
+    if not last:
+        return 1
+    href = last.get("href") or ""
+    match = re.search(r"[?&]p=(\d+)", href)
+    return parse_positive_int(match.group(1), 1) if match else 1
+
+
+def fetch_all_chapters(ncode):
+    ncode = ncode.lower()
+    base = f"https://ncode.syosetu.com/{ncode}/"
+    resp = _fetch(base)
+    soup = BeautifulSoup(resp.text, "html.parser")
+    chapters, arcs = _parse_toc_page(soup)
+    page_count = _toc_page_count(soup)
+
+    for page in range(2, page_count + 1):
+        try:
+            resp = _fetch(f"{base}?p={page}")
+            page_soup = BeautifulSoup(resp.text, "html.parser")
+            page_chapters, page_arcs = _parse_toc_page(page_soup)
+            for entry in page_chapters:
+                if not any(c["num"] == entry["num"] for c in chapters):
+                    chapters.append(entry)
+            for arc in page_arcs:
+                existing = next((a for a in arcs if a["title"] == arc["title"]), None)
+                if existing is None:
+                    arcs.append(arc)
+                else:
+                    for entry in arc["chapters"]:
+                        if not any(c["num"] == entry["num"] for c in existing["chapters"]):
+                            existing["chapters"].append(entry)
+        except Exception:
+            break
+
+    chapters.sort(key=lambda item: item["num"])
+    return chapters, arcs
+
+
+def _parse_content(div):
+    if div is None:
+        return ""
+    parts = []
+    for p in div.find_all("p"):
+        text = p.get_text()
+        if text.strip():
+            html = p.decode_contents()
+            parts.append(f"<p>{html}</p>")
+        else:
+            parts.append('<p class="blank-line">&nbsp;</p>')
+    return "\n".join(parts) if parts else f"<p>{div.get_text()}</p>"
+
+
+def _parse_main_content(soup):
+    body = soup.find("div", id="novel_honbun") or soup.select_one("div.p-novel__body")
+    if not body:
+        return ""
+
+    text_blocks = body.select(":scope > .p-novel__text, .p-novel__text")
+    if text_blocks:
+        main_blocks = [
+            block for block in text_blocks
+            if "preface" not in " ".join(block.get("class") or [])
+            and "afterword" not in " ".join(block.get("class") or [])
+        ]
+        if main_blocks:
+            return "\n".join(filter(None, (_parse_content(block) for block in main_blocks)))
+
+    # Strip note blocks then parse
+    for node in body.select(".p-novel__text--preface, .p-novel__text--afterword, #novel_p, #novel_a"):
+        node.extract()
+    return _parse_content(body)
+
+
+def _parse_foreword(soup):
+    modern = soup.select_one(".p-novel__text--preface")
+    if modern:
+        return _parse_content(modern)
+    return _parse_content(soup.find("div", id="novel_p"))
+
+
+def _parse_afterword(soup):
+    modern = soup.select_one(".p-novel__text--afterword")
+    if modern:
+        return _parse_content(modern)
+    return _parse_content(soup.find("div", id="novel_a"))
+
+
 @app.route("/")
 def index():
     return render_template("index.html", genre_map=GENRE_MAP, genre_icon=GENRE_ICON)
@@ -79,7 +250,7 @@ def api_search():
         params["genre"] = genre
 
     try:
-        resp = requests.get(NAROU_API, params=params, timeout=12, headers=HEADERS)
+        resp = SESSION.get(NAROU_API, params=params, timeout=12)
         resp.encoding = "utf-8"
         data = resp.json()
         total = data[0].get("allcount", 0)
@@ -97,7 +268,7 @@ def novel_detail(ncode):
         "ncode": ncode.lower(),
     }
     try:
-        resp = requests.get(NAROU_API, params=params, timeout=12, headers=HEADERS)
+        resp = SESSION.get(NAROU_API, params=params, timeout=12)
         resp.encoding = "utf-8"
         data = resp.json()
         if len(data) > 1:
@@ -110,42 +281,8 @@ def novel_detail(ncode):
 
 @app.route("/api/chapters/<ncode>")
 def get_chapters(ncode):
-    url = f"https://ncode.syosetu.com/{ncode.lower()}/"
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=15)
-        resp.encoding = "utf-8"
-        soup = BeautifulSoup(resp.text, "html.parser")
-
-        chapters = []
-        arcs = []
-        current_arc = None
-
-        index_box = soup.find("div", class_="index_box")
-        if index_box:
-            for elem in index_box.children:
-                if not hasattr(elem, "name") or elem.name is None:
-                    continue
-                if "chapter_title" in elem.get("class", []):
-                    current_arc = elem.get_text(strip=True)
-                    arcs.append({"title": current_arc, "chapters": []})
-                elif elem.name == "dl":
-                    dd = elem.find("dd", class_="subtitle")
-                    dt = elem.find("dt")
-                    if dd:
-                        link = dd.find("a")
-                        if link:
-                            href = link.get("href", "")
-                            parts = [p for p in href.strip("/").split("/") if p]
-                            try:
-                                num = int(parts[-1])
-                            except (ValueError, IndexError):
-                                num = len(chapters) + 1
-                            date = dt.get_text(strip=True) if dt else ""
-                            entry = {"num": num, "title": link.get_text(strip=True), "date": date}
-                            chapters.append(entry)
-                            if arcs:
-                                arcs[-1]["chapters"].append(entry)
-
+        chapters, arcs = fetch_all_chapters(ncode)
         return jsonify({"chapters": chapters, "arcs": arcs})
     except Exception as e:
         return jsonify({"error": str(e), "chapters": [], "arcs": []})
@@ -160,59 +297,53 @@ def read_chapter(ncode, chapter):
 def get_content(ncode, chapter):
     url = f"https://ncode.syosetu.com/{ncode.lower()}/{chapter}/"
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=15)
-        resp.encoding = "utf-8"
+        resp = _fetch(url)
         soup = BeautifulSoup(resp.text, "html.parser")
 
-        # Chapter title
-        title_elem = soup.find("p", class_="novel_subtitle") or soup.find("h1", class_="p-novel__title")
+        title_elem = (
+            soup.select_one("h1.p-novel__title, .p-novel__title")
+            or soup.find("p", class_="novel_subtitle")
+        )
         title = title_elem.get_text(strip=True) if title_elem else f"第{chapter}话"
 
-        # Novel title
         novel_title = ""
-        nt = soup.find("a", class_="novel_title") or soup.find("p", class_="novel_title")
-        if not nt:
-            nt = soup.find("a", {"href": f"/{ncode.lower()}/"})
+        nt = (
+            soup.select_one("a.c-announce__text, a.p-novel__series-title, a.novel_title")
+            or soup.find("p", class_="novel_title")
+            or soup.find("a", {"href": f"/{ncode.lower()}/"})
+        )
         if nt:
             novel_title = nt.get_text(strip=True)
 
-        # Foreword
-        foreword = ""
-        fw = soup.find("div", id="novel_p")
-        if fw:
-            foreword = _parse_content(fw)
+        foreword = _parse_foreword(soup)
+        content = _parse_main_content(soup)
+        afterword = _parse_afterword(soup)
 
-        # Main content
-        content = ""
-        content_div = (soup.find("div", id="novel_honbun") or
-                       soup.find("div", class_="p-novel__body"))
-        if content_div:
-            content = _parse_content(content_div)
-
-        # Afterword
-        afterword = ""
-        aw = soup.find("div", id="novel_a")
-        if aw:
-            afterword = _parse_content(aw)
-
-        # Navigation
         prev_ch = next_ch = None
-        nav = soup.find("div", class_="novel_bn") or soup.find("div", class_="p-novel__navigation")
-        if nav:
-            for a in nav.find_all("a"):
-                href = a.get("href", "")
-                parts = [p for p in href.strip("/").split("/") if p]
-                if not parts:
-                    continue
-                try:
-                    num = int(parts[-1])
-                    chint = int(chapter)
-                    if num < chint:
-                        prev_ch = num
-                    elif num > chint:
-                        next_ch = num
-                except ValueError:
-                    pass
+        chint = parse_positive_int(chapter, 1)
+        nav_roots = soup.select(
+            "div.novel_bn, div.p-novel__navigation, nav.p-novel__navi, div.c-pager, div.p-novel__navi"
+        )
+        links = []
+        for root in nav_roots:
+            links.extend(root.find_all("a"))
+        if not links:
+            links = soup.find_all("a")
+        for a in links:
+            href = a.get("href", "")
+            num = extract_chapter_number(href, None)
+            if num is None:
+                continue
+            if num < chint:
+                prev_ch = num
+            elif num > chint:
+                if next_ch is None or num < next_ch:
+                    next_ch = num
+
+        if prev_ch is None and chint > 1:
+            prev_ch = chint - 1
+        if next_ch is None and prev_ch is not None:
+            next_ch = chint + 1
 
         return jsonify({
             "title": title,
@@ -225,21 +356,6 @@ def get_content(ncode, chapter):
         })
     except Exception as e:
         return jsonify({"error": str(e)})
-
-
-def _parse_content(div):
-    parts = []
-    for p in div.find_all("p"):
-        inner = str(p)
-        # Keep ruby (furigana) tags, strip other tags we don't want
-        text = p.get_text()
-        if text.strip():
-            # Preserve ruby annotations
-            html = p.decode_contents()
-            parts.append(f"<p>{html}</p>")
-        else:
-            parts.append('<p class="blank-line">&nbsp;</p>')
-    return "\n".join(parts) if parts else f"<p>{div.get_text()}</p>"
 
 
 @app.errorhandler(404)

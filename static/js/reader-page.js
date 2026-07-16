@@ -19,19 +19,24 @@ catalogLink.href = readerNcode ? getNovelUrl(readerNcode) : "index.html";
 catalogLinkBottom.href = catalogLink.href;
 
 if (!readerNcode) {
-  showReaderError();
+  showReaderError("缺少小说编号");
 } else {
   applyPrefs();
   registerSettingHandlers();
   registerNavigationHandlers();
   loadContent().catch((error) => {
     console.error(error);
-    showReaderError();
+    showReaderError(error?.message || "内容加载失败");
   });
 }
 
 document.getElementById("settingsBtn").addEventListener("click", toggleSettings);
-document.getElementById("reloadBtn").addEventListener("click", () => loadContent());
+document.getElementById("reloadBtn").addEventListener("click", () => {
+  loadContent().catch((error) => {
+    console.error(error);
+    showReaderError(error?.message || "内容加载失败");
+  });
+});
 
 window.addEventListener("scroll", () => {
   const doc = document.documentElement;
@@ -61,7 +66,7 @@ window.addEventListener("popstate", () => {
   chapterChangedByNavigation = false;
   loadContent().catch((error) => {
     console.error(error);
-    showReaderError();
+    showReaderError(error?.message || "内容加载失败");
   });
 });
 
@@ -81,18 +86,12 @@ async function loadContent() {
   const html = await fetchProxyHtml(getOriginChapterUrl(readerNcode, currentChapter));
   const doc = parseHtml(html);
 
-  const titleElement = doc.querySelector("p.novel_subtitle, h1.p-novel__title");
-  const novelTitleElement = doc.querySelector("a.novel_title, p.novel_title") || doc.querySelector(`a[href='/${readerNcode}/']`);
-  const contentElement = doc.querySelector("div#novel_honbun, div.p-novel__body");
-  const forewordElement = doc.querySelector("div#novel_p");
-  const afterwordElement = doc.querySelector("div#novel_a");
-
-  const title = titleElement?.textContent.trim() || `第${currentChapter}话`;
-  const novelTitle = novelTitleElement?.textContent.trim() || readerNcode;
-  const contentHtml = parseContentBlock(contentElement);
+  const title = parseChapterTitle(doc, currentChapter);
+  const novelTitle = parseNovelTitleFromChapter(doc, readerNcode);
+  const contentHtml = parseMainContent(doc);
 
   if (!contentHtml) {
-    throw new Error("章节正文为空");
+    throw new Error("章节正文为空（代理可能未拿到原站页面）");
   }
 
   document.title = `${title} · ${novelTitle} · 日文小说`;
@@ -101,12 +100,22 @@ async function loadContent() {
   document.getElementById("readerChTitle").textContent = title;
   document.getElementById("readerContent").innerHTML = contentHtml;
 
-  const foreword = parseContentBlock(forewordElement);
-  const afterword = parseContentBlock(afterwordElement);
+  const foreword = parseForeword(doc);
+  const afterword = parseAfterword(doc);
   document.getElementById("readerForeword").innerHTML = foreword ? `<div class="word-wrap"><h4>前言</h4>${foreword}</div>` : "";
   document.getElementById("readerAfterword").innerHTML = afterword ? `<div class="word-wrap"><h4>后记</h4>${afterword}</div>` : "";
 
-  parseChapterNavigation(doc);
+  const nav = parseChapterNavigation(doc, currentChapter);
+  prevChapter = nav.prevChapter;
+  nextChapter = nav.nextChapter;
+  // When prev link is missing, still allow going back by sequence.
+  if (prevChapter === null && currentChapter > 1) {
+    prevChapter = currentChapter - 1;
+  }
+  // Only invent a next chapter if page looks mid-series (has prev) — avoid infinite next.
+  if (nextChapter === null && prevChapter !== null) {
+    nextChapter = currentChapter + 1;
+  }
   updateNavButtons();
   syncSettingButtons();
 
@@ -119,28 +128,6 @@ async function loadContent() {
     scheduleSaveProgress();
   }
   chapterChangedByNavigation = false;
-}
-
-function parseChapterNavigation(doc) {
-  prevChapter = null;
-  nextChapter = null;
-  const navigation = doc.querySelector("div.novel_bn, div.p-novel__navigation");
-  if (!navigation) {
-    return;
-  }
-
-  navigation.querySelectorAll("a").forEach((link) => {
-    const href = link.getAttribute("href");
-    const number = extractChapterNumber(href, NaN);
-    if (!Number.isInteger(number)) {
-      return;
-    }
-    if (number < currentChapter) {
-      prevChapter = number;
-    } else if (number > currentChapter) {
-      nextChapter = number;
-    }
-  });
 }
 
 function registerNavigationHandlers() {
@@ -172,7 +159,7 @@ function goChapter(direction) {
   history.pushState({}, "", getReadUrl(readerNcode, currentChapter));
   loadContent().catch((error) => {
     console.error(error);
-    showReaderError();
+    showReaderError(error?.message || "内容加载失败");
   });
 }
 
@@ -249,10 +236,26 @@ function syncSettingButtons() {
   });
 }
 
-function showReaderError() {
+function showReaderError(message) {
   readerLoading.style.display = "none";
   readerArticle.style.display = "none";
   readerError.style.display = "flex";
+  const origin = readerNcode ? getOriginChapterUrl(readerNcode, currentChapter) : "https://syosetu.com/";
+  readerError.innerHTML = `
+    <p>⚠️ ${escapeHtml(message || "内容加载失败，请稍后重试")}</p>
+    <p style="margin-top:8px;font-size:14px;opacity:.85">
+      公开 CORS 代理经常失效。可打开原站阅读，或配置自建代理（localStorage.ncodeProxyBase）。
+    </p>
+    <p style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
+      <button class="btn-primary" id="reloadBtn">重新加载</button>
+      <a class="btn-primary" style="display:inline-flex;align-items:center;text-decoration:none" href="${origin}" target="_blank" rel="noopener">原站打开此话</a>
+    </p>`;
+  document.getElementById("reloadBtn")?.addEventListener("click", () => {
+    loadContent().catch((error) => {
+      console.error(error);
+      showReaderError(error?.message || "内容加载失败");
+    });
+  });
 }
 
 function getScrollRatio() {
