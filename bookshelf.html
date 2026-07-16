@@ -3,30 +3,42 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>我的书架 · 日文小说</title>
+  <meta name="description" content="我的书架 · 日文小説">
+  <meta name="theme-color" content="#1a4d6b">
+  <title>我的书架 · 日文小説</title>
   <link rel="stylesheet" href="static/css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+JP:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&family=Shippori+Mincho:wght@500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+  <noscript><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+JP:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&family=Shippori+Mincho:wght@500;600;700&display=swap" rel="stylesheet"></noscript>
 </head>
 <body class="light">
+  <script>
+    try { if (localStorage.getItem("siteTheme") === "dark") { document.body.classList.add("dark"); document.body.classList.remove("light"); } } catch (e) {}
+  </script>
   <nav class="navbar">
     <div class="nav-inner">
       <a href="index.html" class="logo">
-        <span class="logo-red">日文</span><span class="logo-gray">小说</span>
+        <span class="logo-mark" aria-hidden="true"></span>
+        <span class="logo-red">日文</span><span class="logo-gray">小説</span>
       </a>
       <div class="nav-links">
         <a href="index.html" class="nav-link">首页</a>
         <a href="bookshelf.html" class="nav-link">书架</a>
-        <a href="index.html?order=hyoka" class="nav-link">排行榜</a>
-        <a href="index.html?order=favnovelcnt" class="nav-link">热门收藏</a>
-        <a href="index.html?order=new" class="nav-link">最新更新</a>
+        <a href="index.html?order=hyoka" class="nav-link" data-nav-order="hyoka">排行榜</a>
+        <a href="index.html?order=favnovelcnt" class="nav-link" data-nav-order="favnovelcnt">热门收藏</a>
+        <a href="index.html?order=new" class="nav-link" data-nav-order="new">最新更新</a>
       </div>
-      <button class="theme-btn" id="themeBtn" title="切换主题">🌙</button>
+      <button class="theme-btn" id="themeBtn" type="button" title="切换主题" aria-label="切换主题">
+        <span class="theme-icon" aria-hidden="true"></span>
+      </button>
     </div>
   </nav>
 
   <main>
     <div class="container shelf-page">
       <div class="shelf-header">
-        <h1 class="shelf-title">📚 我的书架</h1>
+        <h1 class="shelf-title">我的书架</h1>
         <p class="shelf-sub">本地记忆 · 仅保存在本浏览器</p>
       </div>
 
@@ -42,13 +54,14 @@
 
   <footer class="footer">
     <div class="footer-inner">
-      <p>内容来源：<a href="https://syosetu.com" target="_blank" rel="noopener">小説家になろう</a>（合法公开平台）</p>
+      <p>内容来源：なろう / カクヨム（合法公开平台）</p>
       <p>本站仅供日语学习与交流，版权归原作者所有</p>
     </div>
   </footer>
 
-  <script src="static/js/app.js"></script>
-  <script src="static/js/common.js"></script>
-  <script src="static/js/shelf-page.js"></script>
+  <script src="static/js/common.js" defer></script>
+  <script src="static/js/sources.js" defer></script>
+  <script src="static/js/app.js" defer></script>
+  <script src="static/js/shelf-page.js" defer></script>
 </body>
 </html>

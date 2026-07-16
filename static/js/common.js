@@ -6,17 +6,24 @@ const PROXY_WINNER_KEY = "ncodeProxyWinner";
 const API_CACHE_KEY = "narouApiCache";
 const API_BLOCKED_KEY = "narouApiBlocked";
 const API_CACHE_TTL_MS = 5 * 60 * 1000;
+const HTML_CACHE_TTL_MS = 3 * 60 * 1000;
+const HTML_CACHE_MAX = 40;
 const JSONP_TIMEOUT_MS = 2500;
 const PROXY_TIMEOUT_MS = 5000;
 
 // Public CORS proxies. Override via localStorage ncodeProxyBase or ?proxy=
 const DEFAULT_PROXY_BUILDERS = [
-  (url) => `https://proxy.cors.sh/${url}`,
   (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
   (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
   (url) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+  (url) => `https://proxy.cors.sh/${url}`,
   (url) => `https://cors.eu.org/${url}`,
 ];
+
+/** In-memory HTML cache (target URL → { html, expiresAt }). */
+const htmlFetchCache = new Map();
+/** In-flight HTML fetches to coalesce duplicate requests. */
+const htmlFetchInflight = new Map();
 
 const GENRE_MAP = {
   "101": "异世界·恋爱", "102": "现实世界·恋爱",
@@ -88,37 +95,30 @@ function buildLocalUrl(page, params = {}) {
   return `${url.pathname.split("/").pop()}${url.search}`;
 }
 
-function getNovelUrl(ncode) {
-  return buildLocalUrl("novel.html", { ncode: ncode.toLowerCase() });
-}
+/* getNovelUrl / getReadUrl / getOrigin*Url are provided by sources.js */
 
-function getReadUrl(ncode, chapter) {
-  return buildLocalUrl("read.html", { ncode: ncode.toLowerCase(), chapter });
-}
-
-function getOriginIndexUrl(ncode, page) {
-  const base = `https://ncode.syosetu.com/${String(ncode).toLowerCase()}/`;
-  return page && page > 1 ? `${base}?p=${page}` : base;
-}
-
-function getOriginChapterUrl(ncode, chapter) {
-  return `${getOriginIndexUrl(ncode)}${chapter}/`;
+function normalizeProxyBase(value) {
+  const base = String(value || "").trim();
+  if (!base) {
+    return "";
+  }
+  // Query-style (...?url=) must not gain a trailing slash.
+  if (base.includes("?") || base.endsWith("=")) {
+    return base;
+  }
+  return base.endsWith("/") ? base : `${base}/`;
 }
 
 function getCustomProxyBase() {
   const fromQuery = getQueryParam("proxy").trim();
   if (fromQuery) {
-    return fromQuery.endsWith("/") ? fromQuery : `${fromQuery}/`;
+    return normalizeProxyBase(fromQuery);
   }
   try {
-    const stored = localStorage.getItem(PROXY_STORAGE_KEY);
-    if (stored) {
-      return stored.endsWith("/") ? stored : `${stored}/`;
-    }
+    return normalizeProxyBase(localStorage.getItem(PROXY_STORAGE_KEY) || "");
   } catch (error) {
-    // ignore
+    return "";
   }
-  return "";
 }
 
 function buildProxyCandidates(targetUrl) {
@@ -151,7 +151,7 @@ function looksLikeBlockedOrErrorPage(html) {
   if (sample.includes("rate limit exceeded")) {
     return true;
   }
-  // Real syosetu pages (old or new markup) contain at least one of these.
+  // Real novel pages (なろう / カクヨム) contain at least one of these.
   const hasNovelMarkup =
     html.includes("p-eplist") ||
     html.includes("index_box") ||
@@ -159,7 +159,12 @@ function looksLikeBlockedOrErrorPage(html) {
     html.includes("novel_honbun") ||
     html.includes("p-novel__title") ||
     html.includes("novel_subtitle") ||
-    html.includes("ncode.syosetu.com");
+    html.includes("ncode.syosetu.com") ||
+    html.includes("kakuyomu.jp") ||
+    html.includes("__NEXT_DATA__") ||
+    html.includes("widget-episodeBody") ||
+    html.includes("widget-workCard") ||
+    html.includes("tableOfContentsV2");
   return !hasNovelMarkup;
 }
 
@@ -199,14 +204,41 @@ function writeApiCache(params, data) {
   try {
     const raw = sessionStorage.getItem(API_CACHE_KEY);
     const map = raw ? JSON.parse(raw) : {};
-    map[apiCacheKey(params)] = { data, expiresAt: Date.now() + API_CACHE_TTL_MS };
+    const now = Date.now();
+    Object.keys(map).forEach((key) => {
+      if (!map[key]?.expiresAt || map[key].expiresAt < now) {
+        delete map[key];
+      }
+    });
+    map[apiCacheKey(params)] = { data, expiresAt: now + API_CACHE_TTL_MS };
     const keys = Object.keys(map);
     if (keys.length > 30) {
-      keys.slice(0, keys.length - 30).forEach((key) => delete map[key]);
+      keys
+        .map((key) => ({ key, expiresAt: map[key].expiresAt || 0 }))
+        .sort((a, b) => a.expiresAt - b.expiresAt)
+        .slice(0, keys.length - 30)
+        .forEach((item) => delete map[item.key]);
     }
     sessionStorage.setItem(API_CACHE_KEY, JSON.stringify(map));
   } catch (error) {
     // ignore quota
+  }
+}
+
+function readHtmlCache(url) {
+  const hit = htmlFetchCache.get(url);
+  if (!hit || hit.expiresAt < Date.now()) {
+    htmlFetchCache.delete(url);
+    return null;
+  }
+  return hit.html;
+}
+
+function writeHtmlCache(url, html) {
+  htmlFetchCache.set(url, { html, expiresAt: Date.now() + HTML_CACHE_TTL_MS });
+  if (htmlFetchCache.size > HTML_CACHE_MAX) {
+    const oldest = htmlFetchCache.keys().next().value;
+    htmlFetchCache.delete(oldest);
   }
 }
 
@@ -406,44 +438,72 @@ async function fetchViaBuilder(builder) {
   return text;
 }
 
-async function fetchProxyHtml(url) {
-  const builders = reorderProxyBuilders(buildProxyCandidates(url));
-  const errors = [];
-
-  const firstBatch = builders.slice(0, 2);
-  if (firstBatch.length) {
-    try {
-      return await Promise.any(firstBatch.map((builder) => fetchViaBuilder(builder)));
-    } catch (error) {
-      errors.push("首批 HTML 代理失败");
+async function fetchProxyHtml(url, { bypassCache = false } = {}) {
+  if (!bypassCache) {
+    const cached = readHtmlCache(url);
+    if (cached) {
+      return cached;
+    }
+    const inflight = htmlFetchInflight.get(url);
+    if (inflight) {
+      return inflight;
     }
   }
 
-  for (const builder of builders.slice(2)) {
-    try {
-      return await fetchViaBuilder(builder);
-    } catch (error) {
-      errors.push(String(error?.message || error));
-    }
-  }
+  const task = (async () => {
+    const builders = reorderProxyBuilders(buildProxyCandidates(url));
+    const errors = [];
 
-  // Last-resort: Jina Reader (markdown). Useful when pure HTML proxies fail.
-  try {
-    const jinaResponse = await fetch(`https://r.jina.ai/${url}`, {
-      cache: "no-store",
-      headers: { Accept: "text/plain" },
-    });
-    if (jinaResponse.ok) {
-      const markdown = await jinaResponse.text();
-      if (markdown && markdown.length > 80 && !markdown.includes("AuthenticationRequiredError")) {
-        return wrapMarkdownAsHtml(markdown);
+    const firstBatch = builders.slice(0, 2);
+    if (firstBatch.length) {
+      try {
+        const html = await Promise.any(firstBatch.map((builder) => fetchViaBuilder(builder)));
+        writeHtmlCache(url, html);
+        return html;
+      } catch (error) {
+        errors.push("首批 HTML 代理失败");
       }
     }
-  } catch (error) {
-    errors.push(`jina: ${error?.message || error}`);
-  }
 
-  throw new Error(`所有代理均失败：${errors.slice(0, 3).join(" | ")}`);
+    for (const builder of builders.slice(2)) {
+      try {
+        const html = await fetchViaBuilder(builder);
+        writeHtmlCache(url, html);
+        return html;
+      } catch (error) {
+        errors.push(String(error?.message || error));
+      }
+    }
+
+    // Last-resort: Jina Reader (markdown). Useful when pure HTML proxies fail.
+    try {
+      const jinaResponse = await fetchWithTimeout(`https://r.jina.ai/${url}`, {
+        cache: "no-store",
+        headers: { Accept: "text/plain" },
+      }, PROXY_TIMEOUT_MS + 2000);
+      if (jinaResponse.ok) {
+        const markdown = await jinaResponse.text();
+        if (markdown && markdown.length > 80 && !markdown.includes("AuthenticationRequiredError")) {
+          const html = wrapMarkdownAsHtml(markdown);
+          writeHtmlCache(url, html);
+          return html;
+        }
+      }
+    } catch (error) {
+      errors.push(`jina: ${error?.message || error}`);
+    }
+
+    throw new Error(`所有代理均失败：${errors.slice(0, 3).join(" | ")}`);
+  })();
+
+  if (!bypassCache) {
+    htmlFetchInflight.set(url, task);
+  }
+  try {
+    return await task;
+  } finally {
+    htmlFetchInflight.delete(url);
+  }
 }
 
 function wrapMarkdownAsHtml(markdown) {
@@ -516,52 +576,103 @@ function loadReadingProgressMap() {
   }
 }
 
-function getReadingProgress(ncode) {
-  const key = normalizeNcode(ncode);
+function resolveItemKey(refOrKey) {
+  if (typeof refOrKey === "object" && refOrKey) {
+    return makeItemKey(refOrKey.source || "narou", refOrKey.id || refOrKey.ncode);
+  }
+  const raw = String(refOrKey || "").trim();
+  if (!raw) {
+    return "";
+  }
+  if (raw.includes(":")) {
+    return makeItemKey(parseItemKey(raw).source, parseItemKey(raw).id);
+  }
+  // Legacy bookshelf / progress keys were bare ncode values.
+  return makeItemKey("narou", raw);
+}
+
+function getReadingProgress(refOrKey) {
+  const key = resolveItemKey(refOrKey);
   if (!key) {
     return null;
   }
   const map = loadReadingProgressMap();
-  const progress = map[key];
+  const progress = map[key] || map[parseItemKey(key).id];
   if (!progress || typeof progress !== "object") {
     return null;
   }
   return progress;
 }
 
-function setReadingProgress(ncode, progress) {
-  const key = normalizeNcode(ncode);
+function setReadingProgress(refOrKey, progress) {
+  const key = resolveItemKey(refOrKey);
   if (!key || !progress || typeof progress !== "object") {
     return;
   }
   const map = loadReadingProgressMap();
+  const legacyId = parseItemKey(key).id;
+  const prev = map[key] || map[legacyId] || {};
+  const chapterValue = progress.chapter != null ? progress.chapter : prev.chapter;
   map[key] = {
-    ...map[key],
+    ...prev,
     ...progress,
-    chapter: parsePositiveInt(progress.chapter, parsePositiveInt(map[key]?.chapter, 1)),
+    source: parseItemKey(key).source,
+    id: legacyId,
+    ncode: legacyId,
+    chapter: chapterValue,
     scrollRatio: Number.isFinite(Number(progress.scrollRatio))
       ? Math.min(1, Math.max(0, Number(progress.scrollRatio)))
-      : Number(map[key]?.scrollRatio) || 0,
+      : Number(prev.scrollRatio) || 0,
     updatedAt: new Date().toISOString(),
   };
+  if (map[legacyId] && key !== legacyId) {
+    delete map[legacyId];
+  }
   localStorage.setItem(READING_PROGRESS_KEY, JSON.stringify(map));
-  if (isOnShelf(key) || progress.title) {
+  // Only refresh shelf metadata when the book is already shelved — never auto-add.
+  if (isOnShelf(key)) {
     touchShelfFromProgress(key, {
       title: progress.title || map[key].title,
       writer: progress.writer,
       genre_icon: progress.genre_icon,
+      source: parseItemKey(key).source,
     });
   }
 }
 
-function getResumeChapter(ncode, chapters, defaultChapter = 1) {
-  const progress = getReadingProgress(ncode);
-  const savedChapter = parsePositiveInt(progress?.chapter, defaultChapter);
+function getResumeChapter(refOrKey, chapters, defaultChapter = 1) {
+  const progress = getReadingProgress(refOrKey);
+  const savedRaw = progress?.chapter;
   if (!Array.isArray(chapters) || chapters.length === 0) {
-    return savedChapter;
+    return savedRaw != null && savedRaw !== "" ? savedRaw : defaultChapter;
   }
-  const chapterSet = new Set(chapters.map((item) => parsePositiveInt(item?.num, NaN)).filter(Number.isInteger));
-  return chapterSet.has(savedChapter) ? savedChapter : parsePositiveInt(chapters[0]?.num, defaultChapter);
+  const chapterSet = new Set(chapters.map((item) => String(item?.num)));
+  if (savedRaw != null && chapterSet.has(String(savedRaw))) {
+    return savedRaw;
+  }
+  return chapters[0]?.num != null ? chapters[0].num : defaultChapter;
+}
+
+function sanitizeNovelFragment(html) {
+  if (!html) {
+    return "";
+  }
+  const doc = parseHtml(`<div id="__sanitize_root">${html}</div>`);
+  const root = doc.getElementById("__sanitize_root");
+  if (!root) {
+    return "";
+  }
+  root.querySelectorAll("script,iframe,object,embed,link,style,form").forEach((node) => node.remove());
+  root.querySelectorAll("*").forEach((element) => {
+    Array.from(element.attributes).forEach((attr) => {
+      const name = attr.name.toLowerCase();
+      const value = attr.value || "";
+      if (name.startsWith("on") || (name === "href" && /^\s*javascript:/i.test(value))) {
+        element.removeAttribute(attr.name);
+      }
+    });
+  });
+  return root.innerHTML;
 }
 
 function parseContentBlock(container) {
@@ -578,7 +689,7 @@ function parseContentBlock(container) {
 
   return paragraphs
     .map((paragraph) => {
-      const html = paragraph.innerHTML.trim();
+      const html = sanitizeNovelFragment(paragraph.innerHTML.trim());
       return html ? `<p>${html}</p>` : '<p class="blank-line">&nbsp;</p>';
     })
     .join("\n");
@@ -788,41 +899,62 @@ function parseChapterListFromDoc(doc) {
   return { chapters, arcs };
 }
 
+function mergeChapterPartials(merged, partial) {
+  partial.chapters.forEach((entry) => {
+    if (!merged.chapters.some((item) => item.num === entry.num)) {
+      merged.chapters.push(entry);
+    }
+  });
+  partial.arcs.forEach((arc) => {
+    if (!arc.chapters.length) {
+      return;
+    }
+    const existing = merged.arcs.find((item) => item.title === arc.title);
+    if (existing) {
+      arc.chapters.forEach((entry) => {
+        if (!existing.chapters.some((item) => item.num === entry.num)) {
+          existing.chapters.push(entry);
+        }
+      });
+    } else {
+      merged.arcs.push(arc);
+    }
+  });
+}
+
 async function fetchAllChapters(ncode) {
-  const firstHtml = await fetchProxyHtml(getOriginIndexUrl(ncode, 1));
+  const ref = { source: "narou", id: normalizeNcode(ncode) };
+  const firstHtml = await fetchProxyHtml(getOriginIndexUrl(ref, 1));
   const firstDoc = parseHtml(firstHtml);
   const pageCount = getTocPageCount(firstDoc);
   const merged = parseChapterListFromDoc(firstDoc);
 
   if (pageCount > 1) {
-    for (let page = 2; page <= pageCount; page += 1) {
-      try {
-        const html = await fetchProxyHtml(getOriginIndexUrl(ncode, page));
-        const doc = parseHtml(html);
-        const partial = parseChapterListFromDoc(doc);
-        partial.chapters.forEach((entry) => {
-          if (!merged.chapters.some((item) => item.num === entry.num)) {
-            merged.chapters.push(entry);
+    // Parallel TOC pages (cap concurrency via chunking) for faster long series.
+    const pages = Array.from({ length: pageCount - 1 }, (_, index) => index + 2);
+    const chunkSize = 3;
+    for (let offset = 0; offset < pages.length; offset += chunkSize) {
+      const chunk = pages.slice(offset, offset + chunkSize);
+      const results = await Promise.all(
+        chunk.map(async (page) => {
+          try {
+            const html = await fetchProxyHtml(getOriginIndexUrl(ref, page));
+            return parseChapterListFromDoc(parseHtml(html));
+          } catch (error) {
+            console.warn(`目录第 ${page} 页加载失败`, error);
+            return null;
           }
-        });
-        // Keep arc titles from later pages too
-        partial.arcs.forEach((arc) => {
-          if (!arc.chapters.length) {
-            return;
-          }
-          const existing = merged.arcs.find((item) => item.title === arc.title);
-          if (existing) {
-            arc.chapters.forEach((entry) => {
-              if (!existing.chapters.some((item) => item.num === entry.num)) {
-                existing.chapters.push(entry);
-              }
-            });
-          } else {
-            merged.arcs.push(arc);
-          }
-        });
-      } catch (error) {
-        console.warn(`目录第 ${page} 页加载失败`, error);
+        })
+      );
+      let failed = false;
+      results.forEach((partial) => {
+        if (!partial) {
+          failed = true;
+          return;
+        }
+        mergeChapterPartials(merged, partial);
+      });
+      if (failed) {
         break;
       }
     }
@@ -849,29 +981,58 @@ function saveBookshelfMap(map) {
 }
 
 function listBookshelf() {
-  return Object.values(loadBookshelfMap()).sort((a, b) => {
+  const map = loadBookshelfMap();
+  const migrated = {};
+  Object.entries(map).forEach(([rawKey, value]) => {
+    const ref = value?.source ? { source: value.source, id: value.id || value.ncode } : parseItemKey(rawKey);
+    const key = makeItemKey(ref.source, ref.id || value?.ncode || rawKey);
+    if (!key) {
+      return;
+    }
+    migrated[key] = {
+      ...value,
+      source: ref.source,
+      id: normalizeNovelId(ref.source, ref.id || value?.ncode || rawKey),
+      ncode: normalizeNovelId(ref.source, ref.id || value?.ncode || rawKey),
+      key,
+    };
+  });
+  if (JSON.stringify(Object.keys(map).sort()) !== JSON.stringify(Object.keys(migrated).sort())) {
+    saveBookshelfMap(migrated);
+  }
+  return Object.values(migrated).sort((a, b) => {
     const ta = Date.parse(b.updatedAt || b.addedAt || 0) || 0;
     const tb = Date.parse(a.updatedAt || a.addedAt || 0) || 0;
     return ta - tb;
   });
 }
 
-function isOnShelf(ncode) {
-  const key = normalizeNcode(ncode);
-  return Boolean(key && loadBookshelfMap()[key]);
+function isOnShelf(refOrKey) {
+  const key = resolveItemKey(refOrKey);
+  if (!key) {
+    return false;
+  }
+  const map = loadBookshelfMap();
+  const legacyId = parseItemKey(key).id;
+  return Boolean(map[key] || map[legacyId]);
 }
 
 function addToShelf(novel) {
-  const key = normalizeNcode(novel?.ncode);
+  const source = normalizeSourceId(novel?.source || "narou");
+  const id = normalizeNovelId(source, novel?.id || novel?.ncode);
+  const key = makeItemKey(source, id);
   if (!key) {
     return null;
   }
   const map = loadBookshelfMap();
-  const prev = map[key] || {};
+  const prev = map[key] || map[id] || {};
   const now = new Date().toISOString();
   map[key] = {
-    ncode: key,
-    title: novel.title || prev.title || key,
+    key,
+    source,
+    id,
+    ncode: id,
+    title: novel.title || prev.title || id,
     writer: novel.writer || prev.writer || "",
     genre: novel.genre ?? prev.genre ?? "",
     genre_icon: novel.genre_icon || prev.genre_icon || "📖",
@@ -879,40 +1040,54 @@ function addToShelf(novel) {
     addedAt: prev.addedAt || now,
     updatedAt: now,
   };
+  if (map[id] && key !== id) {
+    delete map[id];
+  }
   saveBookshelfMap(map);
   return map[key];
 }
 
-function removeFromShelf(ncode) {
-  const key = normalizeNcode(ncode);
+function removeFromShelf(refOrKey) {
+  const key = resolveItemKey(refOrKey);
   if (!key) {
     return;
   }
   const map = loadBookshelfMap();
+  const legacyId = parseItemKey(key).id;
   delete map[key];
+  delete map[legacyId];
   saveBookshelfMap(map);
 }
 
-function touchShelfFromProgress(ncode, extra = {}) {
-  const key = normalizeNcode(ncode);
+function touchShelfFromProgress(refOrKey, extra = {}) {
+  const key = resolveItemKey(refOrKey);
   if (!key) {
     return;
   }
+  const ref = parseItemKey(key);
   const map = loadBookshelfMap();
-  if (!map[key] && !extra.title) {
+  const prev = map[key] || map[ref.id];
+  // Never create a new shelf entry from progress alone.
+  if (!prev) {
     return;
   }
   const now = new Date().toISOString();
   map[key] = {
-    ncode: key,
-    title: extra.title || map[key]?.title || key,
-    writer: extra.writer || map[key]?.writer || "",
-    genre: extra.genre ?? map[key]?.genre ?? "",
-    genre_icon: extra.genre_icon || map[key]?.genre_icon || "📖",
-    story: extra.story || map[key]?.story || "",
-    addedAt: map[key]?.addedAt || now,
+    key,
+    source: extra.source || ref.source,
+    id: ref.id,
+    ncode: ref.id,
+    title: extra.title || prev?.title || ref.id,
+    writer: extra.writer || prev?.writer || "",
+    genre: extra.genre ?? prev?.genre ?? "",
+    genre_icon: extra.genre_icon || prev?.genre_icon || "📖",
+    story: extra.story || prev?.story || "",
+    addedAt: prev?.addedAt || now,
     updatedAt: now,
   };
+  if (map[ref.id] && key !== ref.id) {
+    delete map[ref.id];
+  }
   saveBookshelfMap(map);
 }
 

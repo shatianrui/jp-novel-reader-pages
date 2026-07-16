@@ -4,7 +4,7 @@
 {% block extra_head %}
 <style>
 /* Reader-specific overrides */
-body { background: var(--reader-bg); }
+body { background-color: var(--reader-bg); background-image: var(--paper-grain); }
 .navbar { position: sticky; top: 0; z-index: 100; }
 </style>
 {% endblock %}
@@ -21,7 +21,7 @@ body { background: var(--reader-bg); }
     <span class="toolbar-ch-title" id="toolbarChTitle"></span>
   </div>
   <div class="toolbar-right">
-    <button class="toolbar-btn" onclick="toggleSettings()" title="阅读设置">⚙️ 设置</button>
+    <button class="toolbar-btn" onclick="toggleSettings()" title="阅读设置">设置</button>
     <button class="toolbar-btn" id="prevBtn" onclick="goChapter('prev')" disabled>‹ 上一话</button>
     <button class="toolbar-btn" id="nextBtn" onclick="goChapter('next')" disabled>下一话 ›</button>
   </div>
@@ -89,7 +89,7 @@ body { background: var(--reader-bg); }
 <!-- Bottom Navigation -->
 <div class="reader-nav-bottom">
   <button class="nav-big-btn" id="prevBtnBottom" onclick="goChapter('prev')" disabled>← 上一话</button>
-  <a href="/novel/{{ ncode }}" class="nav-big-btn nav-center">📚 目录</a>
+  <a href="/novel/{{ ncode }}" class="nav-big-btn nav-center">目录</a>
   <button class="nav-big-btn" id="nextBtnBottom" onclick="goChapter('next')" disabled>下一话 →</button>
 </div>
 {% endblock %}

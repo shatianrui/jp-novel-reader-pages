@@ -5,11 +5,12 @@
 <!-- Hero Search -->
 <section class="hero">
   <div class="hero-inner">
-    <h1 class="hero-title">📖 日文小说阅读</h1>
+    <p class="hero-brand">日文小説</p>
+    <h1 class="hero-title">多源阅读 · 本地书架</h1>
     <p class="hero-sub">来自「小説家になろう」的海量日文小说，免费阅读</p>
     <div class="search-wrap">
       <input type="text" id="searchInput" class="search-input"
-             placeholder="搜索小说标题、作者、关键词…" autocomplete="off">
+             placeholder="搜索标题、作者，或粘贴作品链接…" autocomplete="off">
       <button class="search-btn" onclick="doSearch()">搜索</button>
     </div>
   </div>
@@ -23,16 +24,16 @@
       <span class="filter-label">分类：</span>
       <div class="genre-chips" id="genreChips">
         <button class="chip active" data-genre="">全部</button>
-        <button class="chip" data-genre="201">⚔️ 高幻想</button>
-        <button class="chip" data-genre="101">💕 异世界恋爱</button>
-        <button class="chip" data-genre="401">🎮 VR游戏</button>
-        <button class="chip" data-genre="306">💥 动作</button>
-        <button class="chip" data-genre="304">🔍 推理</button>
-        <button class="chip" data-genre="305">👻 恐怖</button>
-        <button class="chip" data-genre="307">😂 喜剧</button>
-        <button class="chip" data-genre="303">🏯 历史</button>
-        <button class="chip" data-genre="402">🚀 科幻</button>
-        <button class="chip" data-genre="302">🎭 人情剧</button>
+        <button class="chip" data-genre="201">高幻想</button>
+        <button class="chip" data-genre="101">异世界恋爱</button>
+        <button class="chip" data-genre="401">VR游戏</button>
+        <button class="chip" data-genre="306">动作</button>
+        <button class="chip" data-genre="304">推理</button>
+        <button class="chip" data-genre="305">恐怖</button>
+        <button class="chip" data-genre="307">喜剧</button>
+        <button class="chip" data-genre="303">历史</button>
+        <button class="chip" data-genre="402">科幻</button>
+        <button class="chip" data-genre="302">人情剧</button>
       </div>
     </div>
     <!-- Sort -->
@@ -64,7 +65,7 @@
     <p>正在加载…</p>
   </div>
   <div class="empty" id="emptyState" style="display:none">
-    <p>😔 暂无结果，换个关键词试试吧</p>
+  <p>暂无结果，换个关键词试试</p>
   </div>
   <!-- Pagination -->
   <div class="pagination" id="pagination"></div>
@@ -176,16 +177,16 @@ function buildCard(n) {
   card.innerHTML = `
     <a href="/novel/${n.ncode}" class="card-link">
       <div class="card-header">
-        <span class="card-genre">${n.genre_icon || '📖'} ${n.genre_name || ''}</span>
+        <span class="card-genre">${n.genre_name || ''}</span>
         <div class="card-badges">${status}${type}</div>
       </div>
       <h3 class="card-title">${escHtml(n.title || '')}</h3>
       <p class="card-author">作者：${escHtml(n.writer || '')}</p>
       <p class="card-story">${escHtml(story)}${story.length >= 100 ? '…' : ''}</p>
       <div class="card-meta">
-        <span title="收藏">⭐ ${fav}</span>
-        <span title="综合评分">🏆 ${ga}</span>
-        <span title="字数">📝 ${n.length_label || ''}</span>
+        <span title="收藏">藏 ${fav}</span>
+        <span title="综合评分">评 ${ga}</span>
+        <span title="字数">${n.length_label || ''}</span>
       </div>
     </a>
   `;

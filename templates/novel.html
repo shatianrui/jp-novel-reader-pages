@@ -9,7 +9,7 @@
   <!-- Novel Info -->
   <div class="novel-hero">
     <div class="novel-cover-placeholder">
-      <span class="cover-icon">{{ novel.genre_icon }}</span>
+      <span class="cover-icon">文</span>
     </div>
     <div class="novel-info">
       <div class="novel-badges">
@@ -21,25 +21,25 @@
         {% if not novel.is_series %}
         <span class="badge badge-short">短篇</span>
         {% endif %}
-        <span class="badge badge-genre">{{ novel.genre_icon }} {{ novel.genre_name }}</span>
+        <span class="badge badge-genre">{{ novel.genre_name }}</span>
       </div>
       <h1 class="novel-title-jp">{{ novel.title }}</h1>
       <p class="novel-author">作者：<strong>{{ novel.writer }}</strong></p>
       <div class="novel-stats">
         <div class="stat-item">
-          <span class="stat-icon">⭐</span>
+          <span class="stat-icon">收藏</span>
           <span class="stat-val">{{ "{:,}".format(novel.fav_novel_cnt or 0) }}</span>
-          <span class="stat-label">收藏</span>
+          <span class="stat-label">读者收藏</span>
         </div>
         <div class="stat-item">
-          <span class="stat-icon">🏆</span>
+          <span class="stat-icon">评分</span>
           <span class="stat-val">{{ "{:,}".format(novel.general_all_no or 0) }}</span>
-          <span class="stat-label">评分</span>
+          <span class="stat-label">综合点</span>
         </div>
         <div class="stat-item">
-          <span class="stat-icon">📝</span>
+          <span class="stat-icon">篇幅</span>
           <span class="stat-val">{{ novel.length_label }}</span>
-          <span class="stat-label">字数</span>
+          <span class="stat-label">总字数</span>
         </div>
       </div>
       {% if novel.keyword %}
@@ -58,7 +58,7 @@
 
   <!-- Synopsis -->
   <div class="synopsis-box">
-    <h2 class="section-title">📋 简介</h2>
+    <h2 class="section-title">简介</h2>
     <div class="synopsis-text" id="synopsisText">
       {{ novel.story | replace('\n', '<br>') | safe }}
     </div>
@@ -66,7 +66,7 @@
 
   <!-- Chapter List -->
   <div class="chapter-section">
-    <h2 class="section-title">📚 章节列表</h2>
+    <h2 class="section-title">章节列表</h2>
     <div class="chapter-list-wrap" id="chapterListWrap">
       <div class="loading" id="chapterLoading">
         <div class="spinner"></div><p>正在加载章节…</p>

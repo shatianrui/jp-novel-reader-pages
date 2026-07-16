@@ -3,17 +3,23 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{% block title %}日文小说 · 阅读站{% endblock %}</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=Noto+Serif+SC:wght@400;600&display=swap" rel="stylesheet">
+<meta name="theme-color" content="#1a4d6b">
+<title>{% block title %}日文小説 · 阅读站{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+JP:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&family=Shippori+Mincho:wght@500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 {% block extra_head %}{% endblock %}
 </head>
 <body class="light">
+<script>
+try { if (localStorage.getItem("siteTheme") === "dark") { document.body.classList.add("dark"); document.body.classList.remove("light"); } } catch (e) {}
+</script>
 <nav class="navbar">
   <div class="nav-inner">
     <a href="/" class="logo">
-      <span class="logo-red">日文</span><span class="logo-gray">小说</span>
+      <span class="logo-mark" aria-hidden="true"></span>
+      <span class="logo-red">日文</span><span class="logo-gray">小説</span>
     </a>
     <div class="nav-links">
       <a href="/" class="nav-link">首页</a>
@@ -21,7 +27,9 @@
       <a href="/?order=favnovelcnt" class="nav-link">热门收藏</a>
       <a href="/?order=new" class="nav-link">最新更新</a>
     </div>
-    <button class="theme-btn" id="themeBtn" title="切换主题">🌙</button>
+    <button class="theme-btn" id="themeBtn" type="button" title="切换主题" aria-label="切换主题">
+      <span class="theme-icon" aria-hidden="true"></span>
+    </button>
   </div>
 </nav>
 

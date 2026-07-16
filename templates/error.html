@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}出错了 · 日文小说{% endblock %}
+{% block title %}出错了 · 日文小説{% endblock %}
 {% block content %}
 <div class="container" style="text-align:center; padding: 80px 20px;">
-  <p style="font-size:4rem;">😵</p>
-  <h2 style="margin-bottom:1rem;">出现了一点问题</h2>
+  <p class="hero-brand" style="font-size:clamp(2rem,6vw,3rem);margin-bottom:0.5rem;">日文小説</p>
+  <h2 style="margin-bottom:1rem;font-family:var(--font-brand);letter-spacing:0.06em;">出现了一点问题</h2>
   <p style="color:var(--text-muted); margin-bottom:2rem;">{{ message }}</p>
   <a href="/" class="btn-primary">返回首页</a>
 </div>

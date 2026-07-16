@@ -3,38 +3,49 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>日文小说 · 首页</title>
+  <meta name="description" content="日文小説 — なろう搜索、カクヨム直开、本地书架与阅读进度的 GitHub Pages 静态阅读前端">
+  <meta name="theme-color" content="#1a4d6b">
+  <title>日文小説 · 首页</title>
   <link rel="stylesheet" href="static/css/style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@400;600&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
-  <noscript><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@400;600&display=swap" rel="stylesheet"></noscript>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+JP:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&family=Shippori+Mincho:wght@500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+  <noscript><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+JP:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&family=Shippori+Mincho:wght@500;600;700&display=swap" rel="stylesheet"></noscript>
 </head>
 <body class="light">
+  <script>
+    try { if (localStorage.getItem("siteTheme") === "dark") { document.body.classList.add("dark"); document.body.classList.remove("light"); } } catch (e) {}
+  </script>
   <nav class="navbar">
     <div class="nav-inner">
       <a href="index.html" class="logo">
-        <span class="logo-red">日文</span><span class="logo-gray">小说</span>
+        <span class="logo-mark" aria-hidden="true"></span>
+        <span class="logo-red">日文</span><span class="logo-gray">小説</span>
       </a>
       <div class="nav-links">
         <a href="index.html" class="nav-link">首页</a>
         <a href="bookshelf.html" class="nav-link">书架</a>
-        <a href="index.html?order=hyoka" class="nav-link">排行榜</a>
-        <a href="index.html?order=favnovelcnt" class="nav-link">热门收藏</a>
-        <a href="index.html?order=new" class="nav-link">最新更新</a>
+        <a href="index.html?order=hyoka" class="nav-link" data-nav-order="hyoka">排行榜</a>
+        <a href="index.html?order=favnovelcnt" class="nav-link" data-nav-order="favnovelcnt">热门收藏</a>
+        <a href="index.html?order=new" class="nav-link" data-nav-order="new">最新更新</a>
       </div>
-      <button class="theme-btn" id="themeBtn" title="切换主题">🌙</button>
+      <button class="theme-btn" id="themeBtn" type="button" title="切换主题" aria-label="切换主题">
+        <span class="theme-icon" aria-hidden="true"></span>
+      </button>
     </div>
   </nav>
 
   <main>
     <section class="hero">
       <div class="hero-inner">
-        <h1 class="hero-title">📖 日文小说阅读</h1>
-        <p class="hero-sub">来自「小説家になろう」的海量日文小说，免费阅读</p>
+        <p class="hero-brand">日文小説</p>
+        <h1 class="hero-title">多源阅读 · 本地书架</h1>
+        <p class="hero-sub">なろう搜索 · カクヨム直开 · 本机进度与书架秒开</p>
+        <div class="source-switcher" id="sourceSwitcher" aria-label="阅读源"></div>
         <div class="search-wrap">
           <input type="text" id="searchInput" class="search-input"
-                 placeholder="搜索小说标题、作者、关键词…" autocomplete="off">
-          <button class="search-btn" id="searchBtn">搜索</button>
+                 placeholder="搜索标题、作者，或粘贴作品链接…" autocomplete="off">
+          <button class="search-btn" id="searchBtn" type="button">搜索</button>
         </div>
       </div>
     </section>
@@ -43,29 +54,11 @@
       <div class="filters-inner">
         <div class="filter-group">
           <span class="filter-label">分类：</span>
-          <div class="genre-chips" id="genreChips">
-            <button class="chip active" data-genre="">全部</button>
-            <button class="chip" data-genre="201">⚔️ 高幻想</button>
-            <button class="chip" data-genre="101">💕 异世界恋爱</button>
-            <button class="chip" data-genre="401">🎮 VR游戏</button>
-            <button class="chip" data-genre="306">💥 动作</button>
-            <button class="chip" data-genre="304">🔍 推理</button>
-            <button class="chip" data-genre="305">👻 恐怖</button>
-            <button class="chip" data-genre="307">😂 喜剧</button>
-            <button class="chip" data-genre="303">🏯 历史</button>
-            <button class="chip" data-genre="402">🚀 科幻</button>
-            <button class="chip" data-genre="302">🎭 人情剧</button>
-          </div>
+          <div class="genre-chips" id="genreChips"></div>
         </div>
         <div class="filter-group">
           <span class="filter-label">排序：</span>
-          <select class="sort-select" id="sortSelect">
-            <option value="hyoka">综合评分</option>
-            <option value="favnovelcnt">收藏数</option>
-            <option value="new">最新更新</option>
-            <option value="weekly">本周热门</option>
-            <option value="lengthdesc">字数最多</option>
-          </select>
+          <select class="sort-select" id="sortSelect"></select>
         </div>
       </div>
     </div>
@@ -81,7 +74,7 @@
         <p>正在加载…</p>
       </div>
       <div class="empty" id="emptyState" style="display:none">
-        <p>😔 暂无结果，换个关键词试试吧</p>
+        <p>暂无结果，换个关键词试试</p>
       </div>
       <div class="pagination" id="pagination"></div>
     </div>
@@ -89,13 +82,14 @@
 
   <footer class="footer">
     <div class="footer-inner">
-      <p>内容来源：<a href="https://syosetu.com" target="_blank" rel="noopener">小説家になろう</a>（合法公开平台）</p>
+      <p>内容来源：<span id="footerSource"><a href="https://syosetu.com" target="_blank" rel="noopener">小説家になろう</a></span>（合法公开平台）</p>
       <p>本站仅供日语学习与交流，版权归原作者所有</p>
     </div>
   </footer>
 
-  <script src="static/js/app.js"></script>
-  <script src="static/js/common.js"></script>
-  <script src="static/js/index-page.js"></script>
+  <script src="static/js/common.js" defer></script>
+  <script src="static/js/sources.js" defer></script>
+  <script src="static/js/app.js" defer></script>
+  <script src="static/js/index-page.js" defer></script>
 </body>
 </html>

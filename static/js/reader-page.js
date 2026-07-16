@@ -1,8 +1,10 @@
-const readerNcode = getQueryParam("ncode").toLowerCase();
-let currentChapter = parsePositiveInt(getQueryParam("chapter"), 1);
+const novelRef = getNovelRefFromQuery();
+const readerSource = novelRef.source;
+const readerId = novelRef.id;
+let currentChapter = getQueryParam("chapter") || "1";
 let prevChapter = null;
 let nextChapter = null;
-let prefs = JSON.parse(localStorage.getItem("readerPrefs") || "{}");
+let prefs = loadReaderPrefs();
 const DEFAULT_FONT_SIZE = 21;
 let chapterChangedByNavigation = false;
 let progressSaveTimer = null;
@@ -14,16 +16,20 @@ const readerLoading = document.getElementById("readerLoading");
 const readerError = document.getElementById("readerError");
 const progressBar = document.getElementById("progressBar");
 const settingsPanel = document.getElementById("settingsPanel");
+const footerSource = document.getElementById("footerSource");
 
-catalogLink.href = readerNcode ? getNovelUrl(readerNcode) : "index.html";
+catalogLink.href = readerId ? getNovelUrl(novelRef) : "index.html";
 catalogLinkBottom.href = catalogLink.href;
+updateFooterSource();
 
-if (!readerNcode) {
+if (!readerId) {
   showReaderError("缺少小说编号");
 } else {
   applyPrefs();
   registerSettingHandlers();
   registerNavigationHandlers();
+  // Warm TOC for reliable prev/next (especially Kakuyomu episode ids).
+  fetchNovelChapters(novelRef).catch(() => {});
   loadContent().catch((error) => {
     console.error(error);
     showReaderError(error?.message || "内容加载失败");
@@ -31,8 +37,8 @@ if (!readerNcode) {
 }
 
 document.getElementById("settingsBtn").addEventListener("click", toggleSettings);
-document.getElementById("reloadBtn").addEventListener("click", () => {
-  loadContent().catch((error) => {
+document.getElementById("reloadBtn")?.addEventListener("click", () => {
+  loadContent({ bypassCache: true }).catch((error) => {
     console.error(error);
     showReaderError(error?.message || "内容加载失败");
   });
@@ -44,10 +50,10 @@ window.addEventListener("scroll", () => {
   const percentage = denominator > 0 ? (doc.scrollTop / denominator) * 100 : 0;
   progressBar.style.width = `${Math.min(100, percentage)}%`;
   scheduleSaveProgress();
-});
+}, { passive: true });
 
 document.addEventListener("keydown", (event) => {
-  if (event.target.tagName === "INPUT") {
+  if (event.target.tagName === "INPUT" || event.target.tagName === "TEXTAREA") {
     return;
   }
   if (event.key === "ArrowLeft") {
@@ -62,7 +68,7 @@ document.addEventListener("keydown", (event) => {
 });
 
 window.addEventListener("popstate", () => {
-  currentChapter = parsePositiveInt(getQueryParam("chapter"), currentChapter);
+  currentChapter = getQueryParam("chapter") || currentChapter;
   chapterChangedByNavigation = false;
   loadContent().catch((error) => {
     console.error(error);
@@ -78,44 +84,52 @@ document.addEventListener("visibilitychange", () => {
 
 window.addEventListener("beforeunload", saveReadingProgressNow);
 
-async function loadContent() {
+function loadReaderPrefs() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem("readerPrefs") || "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (error) {
+    return {};
+  }
+}
+
+function updateFooterSource() {
+  if (footerSource) {
+    footerSource.innerHTML = formatFooterSourceHtml(readerSource);
+  }
+}
+
+async function loadContent({ bypassCache = false } = {}) {
   readerArticle.style.display = "none";
   readerLoading.style.display = "flex";
   readerError.style.display = "none";
 
-  const html = await fetchProxyHtml(getOriginChapterUrl(readerNcode, currentChapter));
-  const doc = parseHtml(html);
-
-  const title = parseChapterTitle(doc, currentChapter);
-  const novelTitle = parseNovelTitleFromChapter(doc, readerNcode);
-  const contentHtml = parseMainContent(doc);
-
-  if (!contentHtml) {
-    throw new Error("章节正文为空（代理可能未拿到原站页面）");
+  if (bypassCache && typeof htmlFetchInflight !== "undefined") {
+    // Soft bypass: drop cached chapter HTML for this URL if present.
+    try {
+      const url = getOriginChapterUrl(novelRef, currentChapter);
+      htmlFetchCache?.delete?.(url);
+    } catch (error) {
+      // ignore
+    }
   }
 
-  document.title = `${title} · ${novelTitle} · 日文小说`;
-  document.getElementById("toolbarNovelTitle").textContent = novelTitle;
-  document.getElementById("toolbarChTitle").textContent = title;
-  document.getElementById("readerChTitle").textContent = title;
-  document.getElementById("readerContent").innerHTML = contentHtml;
+  const parsed = await fetchChapterContent(novelRef, currentChapter);
 
-  const foreword = parseForeword(doc);
-  const afterword = parseAfterword(doc);
+  document.title = `${parsed.title} · ${parsed.novelTitle || readerId} · 日文小说`;
+  document.getElementById("toolbarNovelTitle").textContent = parsed.novelTitle || readerId;
+  document.getElementById("toolbarChTitle").textContent = parsed.title;
+  document.getElementById("readerChTitle").textContent = parsed.title;
+  document.getElementById("readerContent").innerHTML = parsed.contentHtml;
+
+  const foreword = parsed.foreword || "";
+  const afterword = parsed.afterword || "";
   document.getElementById("readerForeword").innerHTML = foreword ? `<div class="word-wrap"><h4>前言</h4>${foreword}</div>` : "";
   document.getElementById("readerAfterword").innerHTML = afterword ? `<div class="word-wrap"><h4>后记</h4>${afterword}</div>` : "";
 
-  const nav = parseChapterNavigation(doc, currentChapter);
-  prevChapter = nav.prevChapter;
-  nextChapter = nav.nextChapter;
-  // When prev link is missing, still allow going back by sequence.
-  if (prevChapter === null && currentChapter > 1) {
-    prevChapter = currentChapter - 1;
-  }
-  // Only invent a next chapter if page looks mid-series (has prev) — avoid infinite next.
-  if (nextChapter === null && prevChapter !== null) {
-    nextChapter = currentChapter + 1;
-  }
+  prevChapter = parsed.prevChapter ?? null;
+  nextChapter = parsed.nextChapter ?? null;
+
   updateNavButtons();
   syncSettingButtons();
 
@@ -141,22 +155,22 @@ function registerNavigationHandlers() {
 
 function updateNavButtons() {
   ["prevBtn", "prevBtnBottom"].forEach((id) => {
-    document.getElementById(id).disabled = prevChapter === null;
+    document.getElementById(id).disabled = prevChapter === null || prevChapter === undefined;
   });
   ["nextBtn", "nextBtnBottom"].forEach((id) => {
-    document.getElementById(id).disabled = nextChapter === null;
+    document.getElementById(id).disabled = nextChapter === null || nextChapter === undefined;
   });
 }
 
 function goChapter(direction) {
   const target = direction === "prev" ? prevChapter : nextChapter;
-  if (target === null) {
+  if (target === null || target === undefined || target === "") {
     return;
   }
   saveReadingProgressNow();
-  currentChapter = target;
+  currentChapter = String(target);
   chapterChangedByNavigation = true;
-  history.pushState({}, "", getReadUrl(readerNcode, currentChapter));
+  history.pushState({}, "", getReadUrl(novelRef, currentChapter));
   loadContent().catch((error) => {
     console.error(error);
     showReaderError(error?.message || "内容加载失败");
@@ -194,7 +208,12 @@ function setFontSize(size) {
 }
 
 function setFont(font) {
-  readerArticle.style.fontFamily = font === "serif" ? "'Noto Serif SC', serif" : "'Noto Sans SC', sans-serif";
+  // Novel body uses JP fonts; UI chrome stays Chinese via CSS.
+  const isSans = font === "sans";
+  readerArticle.classList.toggle("font-sans", isSans);
+  readerArticle.style.fontFamily = isSans
+    ? "var(--font-jp-sans)"
+    : "var(--font-jp-serif)";
   prefs.font = font;
   savePrefs();
   syncSettingButtons();
@@ -240,18 +259,20 @@ function showReaderError(message) {
   readerLoading.style.display = "none";
   readerArticle.style.display = "none";
   readerError.style.display = "flex";
-  const origin = readerNcode ? getOriginChapterUrl(readerNcode, currentChapter) : "https://syosetu.com/";
+  const origin = readerId
+    ? getOriginChapterUrl(novelRef, currentChapter)
+    : getSourceDef(readerSource).originHome;
   readerError.innerHTML = `
     <p>⚠️ ${escapeHtml(message || "内容加载失败，请稍后重试")}</p>
     <p style="margin-top:8px;font-size:14px;opacity:.85">
       公开 CORS 代理经常失效。可打开原站阅读，或配置自建代理（localStorage.ncodeProxyBase）。
     </p>
     <p style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
-      <button class="btn-primary" id="reloadBtn">重新加载</button>
-      <a class="btn-primary" style="display:inline-flex;align-items:center;text-decoration:none" href="${origin}" target="_blank" rel="noopener">原站打开此话</a>
+      <button class="btn-primary" id="reloadBtn" type="button">重新加载</button>
+      <a class="btn-primary" style="display:inline-flex;align-items:center;text-decoration:none" href="${escapeAttribute(origin)}" target="_blank" rel="noopener">原站打开此话</a>
     </p>`;
   document.getElementById("reloadBtn")?.addEventListener("click", () => {
-    loadContent().catch((error) => {
+    loadContent({ bypassCache: true }).catch((error) => {
       console.error(error);
       showReaderError(error?.message || "内容加载失败");
     });
@@ -268,10 +289,15 @@ function getScrollRatio() {
 }
 
 function restoreReadingPosition() {
-  const progress = getReadingProgress(readerNcode);
-  const savedChapter = parsePositiveInt(progress?.chapter, 0);
+  const progress = getReadingProgress(novelRef);
+  const savedChapter = progress?.chapter;
   const savedRatio = Number(progress?.scrollRatio);
-  if (chapterChangedByNavigation || savedChapter !== currentChapter || !Number.isFinite(savedRatio) || savedRatio <= 0) {
+  if (
+    chapterChangedByNavigation ||
+    String(savedChapter) !== String(currentChapter) ||
+    !Number.isFinite(savedRatio) ||
+    savedRatio <= 0
+  ) {
     window.scrollTo(0, 0);
     return false;
   }
@@ -286,19 +312,16 @@ function restoreReadingPosition() {
 }
 
 function saveReadingProgressNow() {
-  if (!readerNcode) {
+  if (!readerId) {
     return;
   }
   const title = document.getElementById("toolbarNovelTitle")?.textContent || "";
-  setReadingProgress(readerNcode, {
+  setReadingProgress(novelRef, {
     chapter: currentChapter,
     scrollRatio: getScrollRatio(),
     title: title && title !== "加载中…" ? title : undefined,
+    source: readerSource,
   });
-  // Auto-remember on shelf after real reading
-  if (title && title !== "加载中…") {
-    touchShelfFromProgress(readerNcode, { title });
-  }
 }
 
 function scheduleSaveProgress() {

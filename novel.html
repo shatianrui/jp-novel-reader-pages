@@ -3,26 +3,35 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>小说详情 · 日文小说</title>
+  <meta name="description" content="小说详情 · 日文小説">
+  <meta name="theme-color" content="#1a4d6b">
+  <title>小说详情 · 日文小説</title>
   <link rel="stylesheet" href="static/css/style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@400;600&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
-  <noscript><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@400;600&display=swap" rel="stylesheet"></noscript>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+JP:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&family=Shippori+Mincho:wght@500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+  <noscript><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+JP:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&family=Shippori+Mincho:wght@500;600;700&display=swap" rel="stylesheet"></noscript>
 </head>
 <body class="light">
+  <script>
+    try { if (localStorage.getItem("siteTheme") === "dark") { document.body.classList.add("dark"); document.body.classList.remove("light"); } } catch (e) {}
+  </script>
   <nav class="navbar">
     <div class="nav-inner">
       <a href="index.html" class="logo">
-        <span class="logo-red">日文</span><span class="logo-gray">小说</span>
+        <span class="logo-mark" aria-hidden="true"></span>
+        <span class="logo-red">日文</span><span class="logo-gray">小説</span>
       </a>
       <div class="nav-links">
         <a href="index.html" class="nav-link">首页</a>
         <a href="bookshelf.html" class="nav-link">书架</a>
-        <a href="index.html?order=hyoka" class="nav-link">排行榜</a>
-        <a href="index.html?order=favnovelcnt" class="nav-link">热门收藏</a>
-        <a href="index.html?order=new" class="nav-link">最新更新</a>
+        <a href="index.html?order=hyoka" class="nav-link" data-nav-order="hyoka">排行榜</a>
+        <a href="index.html?order=favnovelcnt" class="nav-link" data-nav-order="favnovelcnt">热门收藏</a>
+        <a href="index.html?order=new" class="nav-link" data-nav-order="new">最新更新</a>
       </div>
-      <button class="theme-btn" id="themeBtn" title="切换主题">🌙</button>
+      <button class="theme-btn" id="themeBtn" type="button" title="切换主题" aria-label="切换主题">
+        <span class="theme-icon" aria-hidden="true"></span>
+      </button>
     </div>
   </nav>
 
@@ -36,13 +45,13 @@
       </div>
 
       <div class="reader-error" id="detailError" style="display:none">
-        <p id="detailErrorMessage">⚠️ 小说信息加载失败</p>
+        <p id="detailErrorMessage">小说信息加载失败</p>
       </div>
 
       <div id="detailContent" style="display:none">
         <div class="novel-hero">
           <div class="novel-cover-placeholder">
-            <span class="cover-icon" id="coverIcon">📖</span>
+            <span class="cover-icon" id="coverIcon">文</span>
           </div>
           <div class="novel-info">
             <div class="novel-badges" id="novelBadges"></div>
@@ -50,24 +59,24 @@
             <p class="novel-author">作者：<strong id="novelWriter"></strong></p>
             <div class="novel-stats">
               <div class="stat-item">
-                <span class="stat-icon">⭐</span>
+                <span class="stat-icon">收藏</span>
                 <span class="stat-val" id="favCount">0</span>
-                <span class="stat-label">收藏</span>
+                <span class="stat-label" id="favLabel">读者收藏</span>
               </div>
               <div class="stat-item">
-                <span class="stat-icon">🏆</span>
+                <span class="stat-icon">评分</span>
                 <span class="stat-val" id="scoreCount">0</span>
-                <span class="stat-label">评分</span>
+                <span class="stat-label" id="scoreLabel">综合点</span>
               </div>
               <div class="stat-item">
-                <span class="stat-icon">📝</span>
+                <span class="stat-icon">篇幅</span>
                 <span class="stat-val" id="lengthLabel">0字</span>
-                <span class="stat-label">字数</span>
+                <span class="stat-label">总字数</span>
               </div>
             </div>
             <div class="tags-wrap" id="tagList" style="display:none"></div>
             <div class="novel-actions">
-              <button class="btn-primary" id="startReadBtn">开始阅读</button>
+              <button class="btn-primary" id="startReadBtn" type="button">开始阅读</button>
               <button class="btn-outline" id="shelfBtn" type="button">加入书架</button>
               <a target="_blank" rel="noopener" class="btn-outline" id="originLink">原站查看</a>
             </div>
@@ -75,12 +84,12 @@
         </div>
 
         <div class="synopsis-box">
-          <h2 class="section-title">📋 简介</h2>
+          <h2 class="section-title">简介</h2>
           <div class="synopsis-text" id="synopsisText"></div>
         </div>
 
         <div class="chapter-section">
-          <h2 class="section-title">📚 章节列表</h2>
+          <h2 class="section-title">章节列表</h2>
           <div class="chapter-list-wrap">
             <div class="loading" id="chapterLoading">
               <div class="spinner"></div>
@@ -98,13 +107,14 @@
 
   <footer class="footer">
     <div class="footer-inner">
-      <p>内容来源：<a href="https://syosetu.com" target="_blank" rel="noopener">小説家になろう</a>（合法公开平台）</p>
+      <p>内容来源：<span id="footerSource"><a href="https://syosetu.com" target="_blank" rel="noopener">小説家になろう</a></span>（合法公开平台）</p>
       <p>本站仅供日语学习与交流，版权归原作者所有</p>
     </div>
   </footer>
 
-  <script src="static/js/app.js"></script>
-  <script src="static/js/common.js"></script>
-  <script src="static/js/novel-page.js"></script>
+  <script src="static/js/common.js" defer></script>
+  <script src="static/js/sources.js" defer></script>
+  <script src="static/js/app.js" defer></script>
+  <script src="static/js/novel-page.js" defer></script>
 </body>
 </html>
