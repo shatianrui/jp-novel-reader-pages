@@ -141,7 +141,89 @@ def test_search_endpoint_handles_api_error(monkeypatch):
 
     monkeypatch.setattr(app_module.SESSION, "get", lambda *a, **k: Boom())
     resp = client.get("/api/search")
-    assert resp.status_code == 200
+    assert resp.status_code == 502
+    assert resp.headers["Cache-Control"] == "no-store"
     data = resp.get_json()
     assert data["novels"] == []
     assert "error" in data
+
+
+def test_invalid_ncode_rejected_without_upstream_call(monkeypatch):
+    client = app_module.app.test_client()
+
+    def fail(*a, **k):
+        raise AssertionError("upstream should not be called")
+
+    monkeypatch.setattr(app_module.SESSION, "get", fail)
+    assert client.get("/api/content/..%2Fetc/1").status_code in (400, 404)
+    assert client.get("/api/content/n1234ab/abc").status_code == 400
+    assert client.get("/api/chapters/bad!id").status_code == 400
+
+
+def test_content_endpoint_success_is_cacheable(monkeypatch):
+    client = app_module.app.test_client()
+
+    class Page:
+        status_code = 200
+        apparent_encoding = "utf-8"
+        encoding = "utf-8"
+        text = NEW_CHAPTER
+
+    monkeypatch.setattr(app_module.SESSION, "get", lambda *a, **k: Page())
+    resp = client.get("/api/content/n1234ab/1")
+    assert resp.status_code == 200
+    assert "s-maxage" in resp.headers["Cache-Control"]
+    assert resp.get_json()["content"]
+
+
+def test_content_endpoint_upstream_403_is_error(monkeypatch):
+    client = app_module.app.test_client()
+
+    class Forbidden:
+        status_code = 403
+        text = "Forbidden"
+
+    monkeypatch.setattr(app_module.SESSION, "get", lambda *a, **k: Forbidden())
+    resp = client.get("/api/content/n1234ab/1")
+    assert resp.status_code == 502
+    assert "403" in resp.get_json()["error"]
+
+
+def test_fetch_uses_relays_and_returns_first_success(monkeypatch):
+    calls = []
+
+    class Resp:
+        def __init__(self, status):
+            self.status_code = status
+            self.apparent_encoding = "utf-8"
+            self.encoding = "utf-8"
+            self.text = "ok" if status == 200 else "blocked"
+
+    statuses = iter([403, 403, 200, 403])
+
+    def fake_get(url, timeout=None):
+        calls.append(url)
+        return Resp(next(statuses, 403))
+
+    monkeypatch.setattr(app_module, "RELAY_BASES", ["https://relay.example/?url="])
+    monkeypatch.setattr(app_module, "DIRECT_FETCH", False)
+    monkeypatch.setattr(app_module, "RELAY_FANOUT", 1)
+    monkeypatch.setattr(app_module, "RELAY_ROUNDS", 4)
+    monkeypatch.setattr(app_module.SESSION, "get", fake_get)
+
+    resp = app_module._fetch("https://ncode.syosetu.com/n1234ab/1/")
+    assert resp.text == "ok"
+    assert len(calls) == 3
+    assert calls[0] == "https://relay.example/?url=https%3A%2F%2Fncode.syosetu.com%2Fn1234ab%2F1%2F"
+
+
+def test_fetch_raises_when_all_relays_blocked(monkeypatch):
+    class Blocked:
+        status_code = 403
+
+    monkeypatch.setattr(app_module, "RELAY_BASES", ["https://relay.example/?url="])
+    monkeypatch.setattr(app_module, "DIRECT_FETCH", False)
+    monkeypatch.setattr(app_module, "RELAY_ROUNDS", 2)
+    monkeypatch.setattr(app_module.SESSION, "get", lambda *a, **k: Blocked())
+    with pytest.raises(app_module.UpstreamError):
+        app_module._fetch("https://ncode.syosetu.com/n1234ab/1/")

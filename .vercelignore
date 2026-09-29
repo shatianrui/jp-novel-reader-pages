@@ -1,0 +1,9 @@
+# GitHub Pages static build — Vercel serves the Flask app instead.
+/index.html
+/novel.html
+/read.html
+/bookshelf.html
+/.nojekyll
+/workers
+/tests
+/render.yaml

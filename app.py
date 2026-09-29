@@ -1,8 +1,12 @@
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from urllib.parse import quote
 
 from flask import Flask, render_template, request, jsonify
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from bs4 import BeautifulSoup
 
 app = Flask(__name__)
@@ -17,6 +21,19 @@ HEADERS = {
 }
 SESSION = requests.Session()
 SESSION.headers.update(HEADERS)
+_retry = Retry(
+    total=2,
+    connect=2,
+    read=2,
+    status=2,
+    backoff_factor=0.4,
+    status_forcelist=(429, 500, 502, 503, 504),
+    allowed_methods=("GET",),
+    respect_retry_after_header=False,
+)
+_adapter = HTTPAdapter(max_retries=_retry, pool_connections=8, pool_maxsize=16)
+SESSION.mount("https://", _adapter)
+SESSION.mount("http://", _adapter)
 SESSION.cookies.set("over18", "yes", domain="syosetu.com")
 SESSION.cookies.set("sasieno", "0", domain="syosetu.com")
 
@@ -46,10 +63,28 @@ def parse_positive_int(value, default=1):
         return default
 
 
+def cover_family(genre):
+    g = str(genre)
+    if g.startswith("1"):
+        return "romance"
+    if g in ("201", "202"):
+        return "fantasy"
+    if g in ("304", "305", "404"):
+        return "mystery"
+    if g == "306":
+        return "action"
+    if g in ("401", "402", "403"):
+        return "scifi"
+    if g in ("301", "302", "303", "307"):
+        return "drama"
+    return "other"
+
+
 def enrich_novel(novel):
     g = str(novel.get("genre", ""))
     novel["genre_name"] = GENRE_MAP.get(g, "其他")
     novel["genre_icon"] = GENRE_ICON.get(g, "📖")
+    novel["cover_family"] = cover_family(g)
     novel["is_completed"] = novel.get("end", 0) == 1
     novel["is_series"] = novel.get("noveltype", 1) == 1
     length = novel.get("length", 0)
@@ -68,10 +103,83 @@ def extract_chapter_number(href, fallback=None):
     return fallback
 
 
-def _fetch(url, timeout=15):
-    resp = SESSION.get(url, timeout=timeout)
+NCODE_RE = re.compile(r"^n[0-9a-z]{2,10}$")
+TOC_FETCH_WORKERS = 6
+
+# syosetu blocks cloud-provider IPs (e.g. Vercel/AWS). NAROU_RELAY lists
+# comma-separated query-style relays (".../?url=") such as workers/cors-proxy.js.
+RELAY_BASES = [b.strip() for b in os.environ.get("NAROU_RELAY", "").split(",") if b.strip()]
+DIRECT_FETCH = os.environ.get("NAROU_DIRECT", "1") != "0" or not RELAY_BASES
+RELAY_FANOUT = max(1, int(os.environ.get("NAROU_RELAY_FANOUT", "3")))
+RELAY_ROUNDS = max(1, int(os.environ.get("NAROU_RELAY_ROUNDS", "2")))
+RETRYABLE_STATUS = {403, 429, 500, 502, 503, 504}
+FETCH_POOL = ThreadPoolExecutor(max_workers=32)
+
+# CDN cache lifetimes (seconds) for successful responses.
+CACHE_SEARCH = 300
+CACHE_CHAPTERS = 600
+CACHE_CONTENT = 3600
+
+
+class UpstreamError(Exception):
+    pass
+
+
+def normalize_ncode(ncode):
+    value = str(ncode or "").strip().lower()
+    return value if NCODE_RE.match(value) else None
+
+
+def cached_json(payload, max_age):
+    resp = jsonify(payload)
+    resp.headers["Cache-Control"] = (
+        f"public, max-age=60, s-maxage={max_age}, stale-while-revalidate={max_age * 6}"
+    )
+    return resp
+
+
+def error_json(message, status=502, **extra):
+    resp = jsonify({"error": message, **extra})
+    resp.status_code = status
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+def _get_once(url, timeout):
+    try:
+        resp = SESSION.get(url, timeout=timeout)
+    except requests.RequestException as exc:
+        raise UpstreamError(f"原站请求失败：{exc.__class__.__name__}") from exc
+    if resp.status_code == 403:
+        raise UpstreamError("原站拒绝访问（HTTP 403，服务器 IP 可能被拦截，需配置 NAROU_RELAY 中转）")
+    if resp.status_code >= 400:
+        raise UpstreamError(f"原站返回 HTTP {resp.status_code}")
     resp.encoding = resp.apparent_encoding or "utf-8"
     return resp
+
+
+def _fetch(url, timeout=(5, 12)):
+    if not RELAY_BASES:
+        return _get_once(url, timeout)
+
+    last_error = UpstreamError("原站请求失败")
+    for round_index in range(RELAY_ROUNDS):
+        targets = [url] if DIRECT_FETCH and round_index == 0 else []
+        targets += [
+            RELAY_BASES[(round_index * RELAY_FANOUT + i) % len(RELAY_BASES)] + quote(url, safe="")
+            for i in range(RELAY_FANOUT)
+        ]
+        futures = [FETCH_POOL.submit(_get_once, target, timeout) for target in targets]
+        for future in as_completed(futures):
+            try:
+                resp = future.result()
+            except UpstreamError as exc:
+                last_error = exc
+                continue
+            for other in futures:
+                other.cancel()
+            return resp
+    raise last_error
 
 
 def _parse_toc_page(soup):
@@ -145,6 +253,14 @@ def _toc_page_count(soup):
     return parse_positive_int(match.group(1), 1) if match else 1
 
 
+def _fetch_toc_page(base, page):
+    try:
+        resp = _fetch(f"{base}?p={page}")
+    except UpstreamError:
+        return [], []
+    return _parse_toc_page(BeautifulSoup(resp.text, "html.parser"))
+
+
 def fetch_all_chapters(ncode):
     ncode = ncode.lower()
     base = f"https://ncode.syosetu.com/{ncode}/"
@@ -153,24 +269,25 @@ def fetch_all_chapters(ncode):
     chapters, arcs = _parse_toc_page(soup)
     page_count = _toc_page_count(soup)
 
-    for page in range(2, page_count + 1):
-        try:
-            resp = _fetch(f"{base}?p={page}")
-            page_soup = BeautifulSoup(resp.text, "html.parser")
-            page_chapters, page_arcs = _parse_toc_page(page_soup)
-            for entry in page_chapters:
-                if not any(c["num"] == entry["num"] for c in chapters):
-                    chapters.append(entry)
-            for arc in page_arcs:
-                existing = next((a for a in arcs if a["title"] == arc["title"]), None)
-                if existing is None:
-                    arcs.append(arc)
-                else:
-                    for entry in arc["chapters"]:
-                        if not any(c["num"] == entry["num"] for c in existing["chapters"]):
-                            existing["chapters"].append(entry)
-        except Exception:
-            break
+    pages = list(range(2, page_count + 1))
+    if pages:
+        with ThreadPoolExecutor(max_workers=min(TOC_FETCH_WORKERS, len(pages))) as pool:
+            results = list(pool.map(lambda p: _fetch_toc_page(base, p), pages))
+    else:
+        results = []
+
+    for page_chapters, page_arcs in results:
+        for entry in page_chapters:
+            if not any(c["num"] == entry["num"] for c in chapters):
+                chapters.append(entry)
+        for arc in page_arcs:
+            existing = next((a for a in arcs if a["title"] == arc["title"]), None)
+            if existing is None:
+                arcs.append(arc)
+            else:
+                for entry in arc["chapters"]:
+                    if not any(c["num"] == entry["num"] for c in existing["chapters"]):
+                        existing["chapters"].append(entry)
 
     chapters.sort(key=lambda item: item["num"])
     return chapters, arcs
@@ -250,52 +367,66 @@ def api_search():
         params["genre"] = genre
 
     try:
-        resp = SESSION.get(NAROU_API, params=params, timeout=12)
+        resp = SESSION.get(NAROU_API, params=params, timeout=(5, 12))
+        resp.raise_for_status()
         resp.encoding = "utf-8"
         data = resp.json()
         total = data[0].get("allcount", 0)
         novels = [enrich_novel(n) for n in data[1:]]
-        return jsonify({"total": total, "novels": novels, "page": page})
+        return cached_json({"total": total, "novels": novels, "page": page}, CACHE_SEARCH)
     except Exception as e:
-        return jsonify({"error": str(e), "total": 0, "novels": [], "page": page})
+        return error_json(str(e), total=0, novels=[], page=page)
 
 
 @app.route("/novel/<ncode>")
 def novel_detail(ncode):
+    ncode = normalize_ncode(ncode)
+    if not ncode:
+        return render_template("error.html", message="无效的作品编号"), 404
     params = {
         "out": "json",
         "of": "t-n-w-s-g-ga-f-l-e-nt-k",
-        "ncode": ncode.lower(),
+        "ncode": ncode,
     }
     try:
-        resp = SESSION.get(NAROU_API, params=params, timeout=12)
+        resp = SESSION.get(NAROU_API, params=params, timeout=(5, 12))
+        resp.raise_for_status()
         resp.encoding = "utf-8"
         data = resp.json()
         if len(data) > 1:
             novel = enrich_novel(data[1])
-            return render_template("novel.html", novel=novel, ncode=ncode.lower())
+            return render_template("novel.html", novel=novel, ncode=ncode)
         return render_template("error.html", message="未找到该小说"), 404
     except Exception as e:
-        return render_template("error.html", message=str(e)), 500
+        return render_template("error.html", message=str(e)), 502
 
 
 @app.route("/api/chapters/<ncode>")
 def get_chapters(ncode):
+    ncode = normalize_ncode(ncode)
+    if not ncode:
+        return error_json("无效的作品编号", 400, chapters=[], arcs=[])
     try:
         chapters, arcs = fetch_all_chapters(ncode)
-        return jsonify({"chapters": chapters, "arcs": arcs})
+        return cached_json({"chapters": chapters, "arcs": arcs}, CACHE_CHAPTERS)
     except Exception as e:
-        return jsonify({"error": str(e), "chapters": [], "arcs": []})
+        return error_json(str(e), chapters=[], arcs=[])
 
 
 @app.route("/read/<ncode>/<chapter>")
 def read_chapter(ncode, chapter):
-    return render_template("reader.html", ncode=ncode.lower(), chapter=chapter)
+    ncode = normalize_ncode(ncode)
+    if not ncode or not str(chapter).isdigit():
+        return render_template("error.html", message="无效的章节地址"), 404
+    return render_template("reader.html", ncode=ncode, chapter=chapter)
 
 
 @app.route("/api/content/<ncode>/<chapter>")
 def get_content(ncode, chapter):
-    url = f"https://ncode.syosetu.com/{ncode.lower()}/{chapter}/"
+    ncode = normalize_ncode(ncode)
+    if not ncode or not str(chapter).isdigit():
+        return error_json("无效的章节地址", 400)
+    url = f"https://ncode.syosetu.com/{ncode}/{chapter}/"
     try:
         resp = _fetch(url)
         soup = BeautifulSoup(resp.text, "html.parser")
@@ -310,7 +441,7 @@ def get_content(ncode, chapter):
         nt = (
             soup.select_one("a.c-announce__text, a.p-novel__series-title, a.novel_title")
             or soup.find("p", class_="novel_title")
-            or soup.find("a", {"href": f"/{ncode.lower()}/"})
+            or soup.find("a", {"href": f"/{ncode}/"})
         )
         if nt:
             novel_title = nt.get_text(strip=True)
@@ -345,7 +476,10 @@ def get_content(ncode, chapter):
         if next_ch is None and prev_ch is not None:
             next_ch = chint + 1
 
-        return jsonify({
+        if not content:
+            return error_json("章节正文为空（原站页面结构异常或被拦截）")
+
+        return cached_json({
             "title": title,
             "novel_title": novel_title,
             "foreword": foreword,
@@ -353,9 +487,9 @@ def get_content(ncode, chapter):
             "afterword": afterword,
             "prev_chapter": prev_ch,
             "next_chapter": next_ch,
-        })
+        }, CACHE_CONTENT)
     except Exception as e:
-        return jsonify({"error": str(e)})
+        return error_json(str(e))
 
 
 @app.errorhandler(404)

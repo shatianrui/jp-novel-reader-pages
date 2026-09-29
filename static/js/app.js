@@ -44,7 +44,8 @@ function markActiveNav() {
     if (page === "bookshelf.html" && href.includes("bookshelf")) {
       active = true;
     } else if (isHome && linkIsHome && !link.dataset.navOrder) {
-      active = link.textContent.trim() === "首页";
+      const order = new URLSearchParams(window.location.search).get("order") || "";
+      active = link.textContent.trim() === "首页" && !order;
     } else if (isHome && link.dataset.navOrder) {
       const order = new URLSearchParams(window.location.search).get("order") || "";
       active = order === link.dataset.navOrder;
@@ -59,3 +60,15 @@ function markActiveNav() {
 }
 
 markActiveNav();
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "/" || event.ctrlKey || event.metaKey || event.altKey) return;
+  const tag = (event.target && event.target.tagName) || "";
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || event.target.isContentEditable) return;
+  const target = [document.getElementById("searchInput"), document.getElementById("navSearchInput")]
+    .find((el) => el && el.offsetParent !== null);
+  if (!target) return;
+  event.preventDefault();
+  target.focus();
+  target.select();
+});

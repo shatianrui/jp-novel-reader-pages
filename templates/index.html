@@ -1,27 +1,58 @@
 {% extends "base.html" %}
-{% block title %}日文小说 · 首页{% endblock %}
+{% block title %}日文小説 · 读原文日本小说{% endblock %}
 
 {% block content %}
-<!-- Hero Search -->
-<section class="hero">
+<!-- Hero -->
+<section class="hero hero--art">
   <div class="hero-inner">
-    <p class="hero-brand">日文小説</p>
-    <h1 class="hero-title">多源阅读 · 本地书架</h1>
-    <p class="hero-sub">来自「小説家になろう」的海量日文小说，免费阅读</p>
-    <div class="search-wrap">
-      <input type="text" id="searchInput" class="search-input"
-             placeholder="搜索标题、作者，或粘贴作品链接…" autocomplete="off">
-      <button class="search-btn" onclick="doSearch()">搜索</button>
+    <div class="hero-copy">
+      <p class="hero-brand">小説家になろう · 日文原文阅读</p>
+      <h1 class="hero-title">読みたい物語を、<br><em>静か</em>に読む。</h1>
+      <p class="hero-sub">收录「小説家になろう」上百万部日文小说。按分类与热度检索，阅读进度自动保存在本机，打开即可接着读。</p>
+      <div class="search-wrap">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input type="text" id="searchInput" class="search-input"
+               placeholder="搜索标题、作者，或粘贴作品链接…" autocomplete="off" aria-label="搜索作品">
+        <span class="search-source" title="当前阅读源">なろう</span>
+        <button class="search-btn" type="button" onclick="doSearch()">搜索</button>
+      </div>
+      <div class="hero-tags">
+        <span>热门：</span>
+        <a href="/?q=異世界転生" data-q="異世界転生">異世界転生</a>
+        <a href="/?q=悪役令嬢" data-q="悪役令嬢">悪役令嬢</a>
+        <a href="/?q=スローライフ" data-q="スローライフ">スローライフ</a>
+        <a href="/?q=ざまぁ" data-q="ざまぁ">ざまぁ</a>
+        <a href="/?q=追放" data-q="追放">追放</a>
+      </div>
+    </div>
+    <div class="hero-art" aria-hidden="true">
+      <span class="hero-sun"></span>
+      <div class="cover cover--fantasy"><span class="cover-title">月下の図書館</span><span class="cover-seal">読</span></div>
+      <div class="cover cover--l cover--romance"><span class="cover-genre">恋愛</span><span class="cover-title">静かな夜に、君と</span><span class="cover-seal">読</span></div>
+      <div class="cover cover--mystery"><span class="cover-title">霧の街の探偵</span><span class="cover-seal">読</span></div>
     </div>
   </div>
 </section>
 
-<!-- Filters -->
+<!-- Continue reading (filled from localStorage) -->
+<section class="container continue-section" id="continueSection" hidden>
+  <div class="section-head">
+    <h2 class="section-heading">继续阅读</h2>
+    <span class="section-note">上次读到的地方</span>
+  </div>
+  <div class="continue-row" id="continueRow"></div>
+</section>
+
+<!-- Discover -->
+<div class="container section-head" id="discover">
+  <h2 class="section-heading">发现作品</h2>
+  <span class="section-note" id="discoverNote">来自小説家になろう</span>
+</div>
+
 <div class="filters-bar">
   <div class="filters-inner">
-    <!-- Genre -->
     <div class="filter-group">
-      <span class="filter-label">分类：</span>
+      <span class="filter-label">分类</span>
       <div class="genre-chips" id="genreChips">
         <button class="chip active" data-genre="">全部</button>
         <button class="chip" data-genre="201">高幻想</button>
@@ -36,10 +67,16 @@
         <button class="chip" data-genre="302">人情剧</button>
       </div>
     </div>
-    <!-- Sort -->
     <div class="filter-group">
-      <span class="filter-label">排序：</span>
-      <select class="sort-select" id="sortSelect" onchange="doSearch()">
+      <span class="filter-label">排序</span>
+      <div class="seg" id="sortSeg" role="tablist" aria-label="排序">
+        <button type="button" data-order="hyoka">综合</button>
+        <button type="button" data-order="favnovelcnt">收藏</button>
+        <button type="button" data-order="weekly">本周</button>
+        <button type="button" data-order="new">最新</button>
+        <button type="button" data-order="lengthdesc">字数</button>
+      </div>
+      <select class="sort-select" id="sortSelect" onchange="doSearch()" hidden aria-hidden="true" tabindex="-1">
         <option value="hyoka">综合评分</option>
         <option value="favnovelcnt">收藏数</option>
         <option value="new">最新更新</option>
@@ -65,7 +102,7 @@
     <p>正在加载…</p>
   </div>
   <div class="empty" id="emptyState" style="display:none">
-  <p>暂无结果，换个关键词试试</p>
+    <p>暂无结果，换个关键词试试</p>
   </div>
   <!-- Pagination -->
   <div class="pagination" id="pagination"></div>
@@ -79,15 +116,30 @@ let currentPage = parseInt(urlParams.get('page') || '1');
 let currentQuery = urlParams.get('q') || '';
 let currentGenre = urlParams.get('genre') || '';
 let currentOrder = urlParams.get('order') || 'hyoka';
+const COVER_FAMILIES = ['fantasy', 'romance', 'mystery', 'action', 'scifi', 'drama', 'other'];
+const ORDER_LABELS = { hyoka: '综合评分', favnovelcnt: '收藏最多', new: '最新更新', weekly: '本周热门', lengthdesc: '字数最多' };
 
 // Init
 document.getElementById('searchInput').value = currentQuery;
 document.getElementById('sortSelect').value = currentOrder;
+if (document.getElementById('sortSelect').value !== currentOrder) {
+  currentOrder = 'hyoka';
+  document.getElementById('sortSelect').value = currentOrder;
+}
 highlightGenre(currentGenre);
+highlightOrder(currentOrder);
 
 function highlightGenre(g) {
   document.querySelectorAll('.chip').forEach(c => {
     c.classList.toggle('active', c.dataset.genre === g);
+  });
+}
+
+function highlightOrder(order) {
+  document.querySelectorAll('#sortSeg button').forEach(b => {
+    const on = b.dataset.order === order;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-selected', on ? 'true' : 'false');
   });
 }
 
@@ -100,6 +152,23 @@ document.querySelectorAll('.chip').forEach(c => {
   });
 });
 
+document.querySelectorAll('#sortSeg button').forEach(b => {
+  b.addEventListener('click', () => {
+    document.getElementById('sortSelect').value = b.dataset.order;
+    highlightOrder(b.dataset.order);
+    doSearch();
+  });
+});
+
+document.querySelectorAll('.hero-tags a[data-q]').forEach(a => {
+  a.addEventListener('click', e => {
+    e.preventDefault();
+    document.getElementById('searchInput').value = a.dataset.q;
+    doSearch();
+    document.getElementById('discover').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+});
+
 document.getElementById('searchInput').addEventListener('keydown', e => {
   if (e.key === 'Enter') doSearch();
 });
@@ -108,6 +177,7 @@ function doSearch(page) {
   currentPage = page || 1;
   currentQuery = document.getElementById('searchInput').value.trim();
   currentOrder = document.getElementById('sortSelect').value;
+  highlightOrder(currentOrder);
   loadNovels();
   // Update URL
   const params = new URLSearchParams();
@@ -115,7 +185,10 @@ function doSearch(page) {
   if (currentGenre) params.set('genre', currentGenre);
   if (currentOrder !== 'hyoka') params.set('order', currentOrder);
   if (currentPage > 1) params.set('page', currentPage);
-  history.replaceState({}, '', '?' + params.toString());
+  const qs = params.toString();
+  history.replaceState({}, '', qs ? '?' + qs : location.pathname);
+  if (typeof markActiveNav === 'function') markActiveNav();
+  if (page) document.getElementById('discover').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 async function loadNovels() {
@@ -125,9 +198,12 @@ async function loadNovels() {
   const bar = document.getElementById('resultsBar');
 
   grid.innerHTML = '';
+  document.getElementById('pagination').innerHTML = '';
   loading.style.display = 'flex';
   empty.style.display = 'none';
   bar.style.display = 'none';
+  document.getElementById('discoverNote').textContent =
+    currentQuery ? `「${currentQuery}」的搜索结果` : `按${ORDER_LABELS[currentOrder] || '综合评分'}排序`;
 
   const params = new URLSearchParams({
     q: currentQuery,
@@ -142,13 +218,13 @@ async function loadNovels() {
     loading.style.display = 'none';
 
     if (!data.novels || data.novels.length === 0) {
-      empty.style.display = 'block';
+      empty.style.display = 'flex';
       return;
     }
 
     bar.style.display = 'block';
     document.getElementById('resultsInfo').textContent =
-      `共 ${data.total.toLocaleString()} 部，当前第 ${currentPage} 页`;
+      `共 ${data.total.toLocaleString()} 部作品 · 第 ${currentPage} 页`;
 
     data.novels.forEach(n => {
       grid.appendChild(buildCard(n));
@@ -157,8 +233,14 @@ async function loadNovels() {
     buildPagination(data.total, currentPage);
   } catch (e) {
     loading.style.display = 'none';
-    empty.style.display = 'block';
+    empty.style.display = 'flex';
   }
+}
+
+function coverHtml(title, family, sizeClass) {
+  const fam = COVER_FAMILIES.includes(family) ? family : 'other';
+  return `<div class="cover ${sizeClass || ''} cover--${fam}" aria-hidden="true">` +
+    `<span class="cover-title">${escHtml(title || '')}</span><span class="cover-seal">読</span></div>`;
 }
 
 function buildCard(n) {
@@ -175,18 +257,21 @@ function buildCard(n) {
     : '';
 
   card.innerHTML = `
-    <a href="/novel/${n.ncode}" class="card-link">
-      <div class="card-header">
-        <span class="card-genre">${n.genre_name || ''}</span>
-        <div class="card-badges">${status}${type}</div>
-      </div>
-      <h3 class="card-title">${escHtml(n.title || '')}</h3>
-      <p class="card-author">作者：${escHtml(n.writer || '')}</p>
-      <p class="card-story">${escHtml(story)}${story.length >= 100 ? '…' : ''}</p>
-      <div class="card-meta">
-        <span title="收藏">藏 ${fav}</span>
-        <span title="综合评分">评 ${ga}</span>
-        <span title="字数">${n.length_label || ''}</span>
+    <a href="/novel/${encodeURIComponent(n.ncode || '')}" class="card-link card-link--cover">
+      ${coverHtml(n.title, n.cover_family)}
+      <div class="card-body">
+        <div class="card-header">
+          <span class="card-genre">${escHtml(n.genre_name || '')}</span>
+          <div class="card-badges">${status}${type}</div>
+        </div>
+        <h3 class="card-title">${escHtml(n.title || '')}</h3>
+        <p class="card-author">${escHtml(n.writer || '')}</p>
+        <p class="card-story">${escHtml(story)}${story.length >= 100 ? '…' : ''}</p>
+        <div class="card-meta">
+          <span class="fav" title="收藏">♥ ${fav}</span>
+          <span title="话数">${ga} 话</span>
+          <span title="字数">${escHtml(n.length_label || '')}</span>
+        </div>
       </div>
     </a>
   `;
@@ -194,7 +279,7 @@ function buildCard(n) {
 }
 
 function buildPagination(total, page) {
-  const totalPages = Math.ceil(total / 20);
+  const totalPages = Math.min(Math.ceil(total / 20), 100);
   if (totalPages <= 1) return;
   const pag = document.getElementById('pagination');
   pag.innerHTML = '';
@@ -216,14 +301,61 @@ function buildPagination(total, page) {
   for (let i = start; i <= end; i++) addBtn(i, i, false, i === page);
   if (end < totalPages) { if (end < totalPages - 1) pag.appendChild(Object.assign(document.createElement('span'), {textContent: '…', className: 'page-ellipsis'})); addBtn(totalPages, totalPages, false, false); }
 
-  addBtn('下一页 ›', page + 1, page === totalPages, false);
+  addBtn('下一页 ›', page + 1, page >= totalPages, false);
 }
 
 function escHtml(str) {
-  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function hashFamily(key) {
+  let h = 0;
+  for (const ch of String(key)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return COVER_FAMILIES[h % COVER_FAMILIES.length];
+}
+
+function readJson(key) {
+  try {
+    const v = JSON.parse(localStorage.getItem(key) || '{}');
+    return v && typeof v === 'object' ? v : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function renderContinue() {
+  const progress = readJson('readingProgress');
+  const meta = readJson('novelMeta');
+  const items = Object.entries(progress)
+    .filter(([k, v]) => /^n\d+[a-z]+$/.test(k) && v && Number.parseInt(v.chapter, 10) > 0)
+    .sort((a, b) => String(b[1].updatedAt || '').localeCompare(String(a[1].updatedAt || '')))
+    .slice(0, 3);
+  if (!items.length) return;
+
+  const row = document.getElementById('continueRow');
+  row.innerHTML = items.map(([ncode, p]) => {
+    const m = meta[ncode] || {};
+    const title = p.title || m.title || ncode.toUpperCase();
+    const chapter = Number.parseInt(p.chapter, 10);
+    const total = Number.parseInt(m.total, 10);
+    const pct = total > 0 ? Math.min(100, Math.round(chapter / total * 100)) : Math.round((Number(p.scrollRatio) || 0) * 100);
+    const sub = `第 ${chapter} 话${p.chapterTitle ? ' · ' + p.chapterTitle : ''}`;
+    return `
+      <a class="continue-card" href="/read/${encodeURIComponent(ncode)}/${chapter}">
+        ${coverHtml(title, m.family || hashFamily(ncode), 'cover--s')}
+        <div class="continue-body">
+          <p class="continue-title">${escHtml(title)}</p>
+          <p class="continue-sub">${escHtml(sub)}</p>
+          <div class="progress-track"><i style="width:${pct}%"></i></div>
+          <div class="continue-foot"><span class="num">${total > 0 ? `${chapter} / ${total} 话` : `本话 ${pct}%`}</span><span class="continue-cta">继续 →</span></div>
+        </div>
+      </a>`;
+  }).join('');
+  document.getElementById('continueSection').hidden = false;
 }
 
 // Initial load
+renderContinue();
 loadNovels();
 </script>
 {% endblock %}
