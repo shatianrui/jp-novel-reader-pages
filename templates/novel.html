@@ -87,12 +87,18 @@ async function loadChapters() {
   try {
     const res = await fetch(`/api/chapters/${NCODE}`);
     const data = await res.json();
+    if (data.error && !(data.chapters && data.chapters.length)) {
+      throw new Error(data.error);
+    }
     allChapters = data.chapters || [];
     renderChapters(data.arcs || [], allChapters);
     updateStartReadBtn();
     document.getElementById('chapterLoading').style.display = 'none';
   } catch(e) {
-    document.getElementById('chapterLoading').innerHTML = '<p style="color:var(--err)">章节加载失败，请刷新重试</p>';
+    const msg = String((e && e.message) || '').replace(/[<>&]/g, '');
+    document.getElementById('chapterLoading').innerHTML =
+      `<p style="color:var(--err)">章节加载失败，请刷新重试${msg ? '（' + msg + '）' : ''}</p>` +
+      `<p><a href="https://ncode.syosetu.com/${NCODE}/" target="_blank" rel="noopener">在原站查看目录</a></p>`;
   }
 }
 

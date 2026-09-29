@@ -75,7 +75,8 @@ export default {
       const upstream = await fetch(parsed.toString(), {
         headers,
         redirect: "follow",
-        cf: { cacheTtl: 120, cacheEverything: false },
+        // Never cache blocks: callers retry to land on a different egress IP.
+        cf: { cacheTtlByStatus: { "200-299": 600, "404": 60, "400-599": 0 } },
       });
 
       const body = await upstream.arrayBuffer();
@@ -84,7 +85,8 @@ export default {
         "Content-Type",
         upstream.headers.get("Content-Type") || (isApi ? "application/json; charset=utf-8" : "text/html; charset=utf-8")
       );
-      responseHeaders.set("Cache-Control", "public, max-age=60");
+      responseHeaders.set("Cache-Control", upstream.ok ? "public, max-age=60" : "no-store");
+      responseHeaders.set("X-Upstream-Status", String(upstream.status));
 
       return new Response(body, {
         status: upstream.status,
