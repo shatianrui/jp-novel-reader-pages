@@ -60,12 +60,17 @@
   --radius-xl: 24px;
   --radius-full: 999px;
 
-  --font-brand: "Shippori Mincho", "Noto Serif JP", "Hiragino Mincho ProN", "Yu Mincho", serif;
-  --font-heading: "Noto Serif SC", "Shippori Mincho", "Songti SC", serif;
-  --font-ui: "Noto Sans SC", "IBM Plex Sans", "PingFang SC", "Microsoft YaHei", sans-serif;
-  --font-num: "IBM Plex Sans", "Noto Sans SC", sans-serif;
-  --font-jp-serif: "Shippori Mincho", "Noto Serif JP", "Hiragino Mincho ProN", "Yu Mincho", serif;
-  --font-jp-sans: "IBM Plex Sans JP", "Hiragino Sans", "Yu Gothic", "Meiryo", "Noto Sans JP", sans-serif;
+  /* CJK web fonts are split into ~100 unicode-range files per weight; loading
+     them for dynamic text floods the network. Dynamic text uses system fonts;
+     Shippori Mincho is only used for fixed display strings (loaded via text=). */
+  --font-mincho-system: "Hiragino Mincho ProN", "Yu Mincho", "YuMincho", "Noto Serif CJK JP", "Source Han Serif JP", "Songti SC", serif;
+  --font-display: "Shippori Mincho", var(--font-mincho-system);
+  --font-brand: var(--font-mincho-system);
+  --font-heading: var(--font-display);
+  --font-ui: "IBM Plex Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  --font-num: "IBM Plex Sans", "PingFang SC", "Microsoft YaHei UI", sans-serif;
+  --font-jp-serif: var(--font-mincho-system);
+  --font-jp-sans: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Yu Gothic", "Meiryo", "Noto Sans CJK JP", sans-serif;
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 
   --paper-grain: radial-gradient(rgba(30, 26, 21, 0.035) 0.6px, transparent 0.8px) 0 0 / 4px 4px;
@@ -2883,4 +2888,18 @@ body.is-reader .settings-panel {
     flex-direction: column;
     align-items: flex-start;
   }
+}
+
+/* Fixed display strings: the only place Shippori Mincho (text= subset) is used */
+.logo,
+.logo-mark::before,
+.hero-title,
+.search-source,
+.hero-tags a,
+.cover-seal,
+.toolbar-btn .aa,
+.settings-inner .fs-step,
+.swatch,
+.footer-brand {
+  font-family: var(--font-display);
 }
