@@ -2,34 +2,43 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="theme-color" content="#1a4d6b">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#f5f0e6" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#14120f" media="(prefers-color-scheme: dark)">
 <title>{% block title %}日文小説 · 阅读站{% endblock %}</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='6' fill='%23c23b22'/%3E%3Ctext x='16' y='23' font-size='19' text-anchor='middle' fill='%23fff8ef' font-family='serif' font-weight='700'%3E%E8%AA%AD%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+JP:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&family=Shippori+Mincho:wght@500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+JP:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;600;700&family=Noto+Serif+SC:wght@600;700&family=Shippori+Mincho:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 {% block extra_head %}{% endblock %}
 </head>
-<body class="light">
+<body class="light {% block body_class %}{% endblock %}">
 <script>
 try { if (localStorage.getItem("siteTheme") === "dark") { document.body.classList.add("dark"); document.body.classList.remove("light"); } } catch (e) {}
 </script>
 <nav class="navbar">
   <div class="nav-inner">
-    <a href="/" class="logo">
+    <a href="/" class="logo" aria-label="日文小説 首页">
       <span class="logo-mark" aria-hidden="true"></span>
       <span class="logo-red">日文</span><span class="logo-gray">小説</span>
     </a>
     <div class="nav-links">
       <a href="/" class="nav-link">首页</a>
-      <a href="/?order=hyoka" class="nav-link">排行榜</a>
-      <a href="/?order=favnovelcnt" class="nav-link">热门收藏</a>
-      <a href="/?order=new" class="nav-link">最新更新</a>
+      <a href="/?order=hyoka" class="nav-link" data-nav-order="hyoka">排行榜</a>
+      <a href="/?order=favnovelcnt" class="nav-link" data-nav-order="favnovelcnt">热门收藏</a>
+      <a href="/?order=new" class="nav-link" data-nav-order="new">最新更新</a>
     </div>
-    <button class="theme-btn" id="themeBtn" type="button" title="切换主题" aria-label="切换主题">
-      <span class="theme-icon" aria-hidden="true"></span>
-    </button>
+    <div class="nav-tools">
+      <form class="nav-search" action="/" method="get" role="search">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input type="search" name="q" id="navSearchInput" placeholder="搜索作品、作者…" autocomplete="off" aria-label="搜索">
+        <kbd>/</kbd>
+      </form>
+      <button class="theme-btn" id="themeBtn" type="button" title="切换主题" aria-label="切换主题">
+        <span class="theme-icon" aria-hidden="true"></span>
+      </button>
+    </div>
   </div>
 </nav>
 
@@ -37,8 +46,8 @@ try { if (localStorage.getItem("siteTheme") === "dark") { document.body.classLis
 
 <footer class="footer">
   <div class="footer-inner">
-    <p>内容来源：<a href="https://syosetu.com" target="_blank" rel="noopener">小説家になろう</a>（合法公开平台）</p>
-    <p>本站仅供日语学习与交流，版权归原作者所有</p>
+    <span class="footer-brand"><span class="logo-mark" aria-hidden="true"></span>日文小説</span>
+    <p>内容来源：<a href="https://syosetu.com" target="_blank" rel="noopener">小説家になろう</a>（合法公开平台）· 本站仅供日语学习与交流，版权归原作者所有</p>
   </div>
 </footer>
 

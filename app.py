@@ -63,10 +63,28 @@ def parse_positive_int(value, default=1):
         return default
 
 
+def cover_family(genre):
+    g = str(genre)
+    if g.startswith("1"):
+        return "romance"
+    if g in ("201", "202"):
+        return "fantasy"
+    if g in ("304", "305", "404"):
+        return "mystery"
+    if g == "306":
+        return "action"
+    if g in ("401", "402", "403"):
+        return "scifi"
+    if g in ("301", "302", "303", "307"):
+        return "drama"
+    return "other"
+
+
 def enrich_novel(novel):
     g = str(novel.get("genre", ""))
     novel["genre_name"] = GENRE_MAP.get(g, "其他")
     novel["genre_icon"] = GENRE_ICON.get(g, "📖")
+    novel["cover_family"] = cover_family(g)
     novel["is_completed"] = novel.get("end", 0) == 1
     novel["is_series"] = novel.get("noveltype", 1) == 1
     length = novel.get("length", 0)

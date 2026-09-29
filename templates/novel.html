@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ novel.title }} · 日文小说{% endblock %}
+{% block title %}{{ novel.title }} · 日文小説{% endblock %}
 
 {% block content %}
 <div class="container novel-detail">
@@ -8,8 +8,10 @@
 
   <!-- Novel Info -->
   <div class="novel-hero">
-    <div class="novel-cover-placeholder">
-      <span class="cover-icon">文</span>
+    <div class="cover cover--l cover--{{ novel.cover_family or 'other' }}" aria-hidden="true">
+      <span class="cover-genre">{{ novel.genre_name }}</span>
+      <span class="cover-title">{{ novel.title }}</span>
+      <span class="cover-seal">読</span>
     </div>
     <div class="novel-info">
       <div class="novel-badges">
@@ -24,7 +26,7 @@
         <span class="badge badge-genre">{{ novel.genre_name }}</span>
       </div>
       <h1 class="novel-title-jp">{{ novel.title }}</h1>
-      <p class="novel-author">作者：<strong>{{ novel.writer }}</strong></p>
+      <p class="novel-author">作者 <strong>{{ novel.writer }}</strong></p>
       <div class="novel-stats">
         <div class="stat-item">
           <span class="stat-icon">收藏</span>
@@ -32,47 +34,73 @@
           <span class="stat-label">读者收藏</span>
         </div>
         <div class="stat-item">
-          <span class="stat-icon">评分</span>
+          <span class="stat-icon">话数</span>
           <span class="stat-val">{{ "{:,}".format(novel.general_all_no or 0) }}</span>
-          <span class="stat-label">综合点</span>
+          <span class="stat-label">全部话数</span>
         </div>
         <div class="stat-item">
-          <span class="stat-icon">篇幅</span>
+          <span class="stat-icon">字数</span>
           <span class="stat-val">{{ novel.length_label }}</span>
           <span class="stat-label">总字数</span>
         </div>
       </div>
       {% if novel.keyword %}
       <div class="tags-wrap">
-        {% for kw in novel.keyword.split() %}
-        <span class="tag">{{ kw }}</span>
+        {% for kw in novel.keyword.split()[:12] %}
+        <a class="tag" href="/?q={{ kw | urlencode }}">{{ kw }}</a>
         {% endfor %}
       </div>
       {% endif %}
       <div class="novel-actions">
-        <button class="btn-primary" id="startReadBtn" onclick="startRead()">开始阅读</button>
-        <a href="https://ncode.syosetu.com/{{ ncode }}/" target="_blank" class="btn-outline">原站查看</a>
+        <button class="btn-primary" id="startReadBtn" type="button" onclick="startRead()">开始阅读</button>
+        <a href="https://ncode.syosetu.com/{{ ncode }}/" target="_blank" rel="noopener" class="btn-outline">原站查看 ↗</a>
       </div>
     </div>
   </div>
 
-  <!-- Synopsis -->
-  <div class="synopsis-box">
-    <h2 class="section-title">简介</h2>
-    <div class="synopsis-text" id="synopsisText">
-      {{ novel.story | replace('\n', '<br>') | safe }}
-    </div>
-  </div>
-
-  <!-- Chapter List -->
-  <div class="chapter-section">
-    <h2 class="section-title">章节列表</h2>
-    <div class="chapter-list-wrap" id="chapterListWrap">
-      <div class="loading" id="chapterLoading">
-        <div class="spinner"></div><p>正在加载章节…</p>
+  <div class="novel-layout">
+    <div class="novel-main">
+      <!-- Synopsis -->
+      <div class="synopsis-box">
+        <h2 class="section-title">简介</h2>
+        <div class="synopsis-text" id="synopsisText" style="white-space:pre-line">{{ novel.story | trim }}</div>
+        <button type="button" class="synopsis-toggle" id="synopsisToggle" hidden>展开全部 ↓</button>
       </div>
-      <div id="chapterContent"></div>
+
+      <!-- Chapter List -->
+      <div class="chapter-section">
+        <h2 class="section-title">章节目录 <span class="count" id="chapterCount"></span></h2>
+        <div class="chapter-list-wrap" id="chapterListWrap">
+          <div class="loading" id="chapterLoading">
+            <div class="spinner"></div><p>正在加载章节…</p>
+          </div>
+          <div id="chapterContent"></div>
+        </div>
+      </div>
     </div>
+
+    <aside class="novel-side">
+      <div class="side-card">
+        <h3 class="side-title">阅读进度</h3>
+        <div class="progress-meta">
+          <span id="progressText">尚未开始</span>
+          <b id="progressPct">0%</b>
+        </div>
+        <div class="progress-track"><i id="progressFill"></i></div>
+        <button class="btn-primary btn-block" type="button" id="sideReadBtn" onclick="startRead()">从第 1 话开始</button>
+      </div>
+      <div class="side-card">
+        <h3 class="side-title">作品信息</h3>
+        <dl class="info-list">
+          <dt>作品编号</dt><dd>{{ ncode | upper }}</dd>
+          <dt>分类</dt><dd>{{ novel.genre_name }}</dd>
+          <dt>形式</dt><dd>{{ '连载' if novel.is_series else '短篇' }}</dd>
+          <dt>状态</dt><dd>{{ '已完结' if novel.is_completed else '连载中' }}</dd>
+          <dt>话数</dt><dd>{{ "{:,}".format(novel.general_all_no or 0) }}</dd>
+          <dt>来源</dt><dd><a href="https://ncode.syosetu.com/{{ ncode }}/" target="_blank" rel="noopener">小説家になろう ↗</a></dd>
+        </dl>
+      </div>
+    </aside>
   </div>
 </div>
 {% endblock %}
@@ -80,8 +108,17 @@
 {% block extra_scripts %}
 <script>
 const NCODE = '{{ ncode }}';
+const NOVEL_META = {{ {'title': novel.title, 'writer': novel.writer, 'family': novel.cover_family, 'total': novel.general_all_no or 0} | tojson }};
 let allChapters = [];
 const READING_PROGRESS_KEY = 'readingProgress';
+
+function saveNovelMeta(extra) {
+  try {
+    const map = JSON.parse(localStorage.getItem('novelMeta') || '{}') || {};
+    map[String(NCODE).toLowerCase()] = { ...map[String(NCODE).toLowerCase()], ...NOVEL_META, ...extra };
+    localStorage.setItem('novelMeta', JSON.stringify(map));
+  } catch (e) {}
+}
 
 async function loadChapters() {
   try {
@@ -92,6 +129,10 @@ async function loadChapters() {
     }
     allChapters = data.chapters || [];
     renderChapters(data.arcs || [], allChapters);
+    if (allChapters.length) {
+      document.getElementById('chapterCount').textContent = `共 ${allChapters.length} 话`;
+      saveNovelMeta({ total: allChapters.length });
+    }
     updateStartReadBtn();
     document.getElementById('chapterLoading').style.display = 'none';
   } catch(e) {
@@ -134,11 +175,16 @@ function renderChapters(arcs, chapters) {
 
 function buildChapterItem(ch) {
   const li = document.createElement('li');
-  li.className = 'chapter-item';
+  const progress = getReadingProgress();
+  const current = Number.parseInt(progress?.chapter, 10);
+  const num = Number.parseInt(ch.num, 10);
+  li.className = 'chapter-item' +
+    (num === current ? ' is-current' : '') +
+    (Number.isInteger(current) && num < current ? ' is-read' : '');
   li.innerHTML = `
     <a href="/read/${NCODE}/${ch.num}" class="chapter-link">
       <span class="ch-num">第 ${ch.num} 话</span>
-      <span class="ch-title">${escHtml(ch.title)}</span>
+      <span class="ch-title">${escHtml(ch.title)}${num === current ? '<span class="ch-here">读到这里</span>' : ''}</span>
       ${ch.date ? `<span class="ch-date">${escHtml(ch.date)}</span>` : ''}
     </a>
   `;
@@ -175,11 +221,47 @@ function getReadingProgress() {
 
 function updateStartReadBtn() {
   const btn = document.getElementById('startReadBtn');
+  const sideBtn = document.getElementById('sideReadBtn');
   const chapter = getResumeChapter();
   const first = allChapters.length > 0 ? Number.parseInt(allChapters[0].num, 10) || 1 : 1;
-  btn.textContent = chapter > first ? `继续阅读（第 ${chapter} 话）` : '开始阅读';
+  const resumed = chapter > first || !!getReadingProgress();
+  btn.textContent = chapter > first ? `继续阅读 · 第 ${chapter} 话` : '开始阅读';
+  sideBtn.textContent = resumed ? `继续第 ${chapter} 话 →` : `从第 ${first} 话开始`;
+
+  const total = allChapters.length || Number(NOVEL_META.total) || 0;
+  const progress = getReadingProgress();
+  const text = document.getElementById('progressText');
+  const pctEl = document.getElementById('progressPct');
+  const fill = document.getElementById('progressFill');
+  if (progress && total > 0) {
+    const pct = Math.min(100, Math.round(chapter / total * 100));
+    text.textContent = `读到第 ${chapter} 话 / 共 ${total} 话`;
+    pctEl.textContent = pct + '%';
+    fill.style.width = pct + '%';
+  } else {
+    text.textContent = total > 0 ? `尚未开始 · 共 ${total} 话` : '尚未开始';
+    pctEl.textContent = '0%';
+    fill.style.width = '0%';
+  }
 }
 
+function initSynopsis() {
+  const el = document.getElementById('synopsisText');
+  const toggle = document.getElementById('synopsisToggle');
+  el.classList.add('is-clamped');
+  if (el.scrollHeight <= el.clientHeight + 8) {
+    el.classList.remove('is-clamped');
+    return;
+  }
+  toggle.hidden = false;
+  toggle.addEventListener('click', () => {
+    const clamped = el.classList.toggle('is-clamped');
+    toggle.textContent = clamped ? '展开全部 ↓' : '收起 ↑';
+  });
+}
+
+saveNovelMeta({});
+initSynopsis();
 updateStartReadBtn();
 loadChapters();
 </script>
